@@ -24,7 +24,7 @@ import {
   FileSpreadsheet,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { useProjects, Project, useProjectLimit } from "@/hooks/useProjects";
+import { useProjects, useProjectLimit } from "@/hooks/useProjects";
 
 const statusIcons = {
   [ProjectStatus.PLANNING]: <ClipboardList className="w-4 h-4" />,
@@ -36,16 +36,42 @@ const statusIcons = {
 
 const statusColors = {
   [ProjectStatus.PLANNING]: "bg-blue-100 text-blue-800",
-  [ProjectStatus.IN_PROGRESS]: "bg-yellow-100 text-yellow-800",
-  [ProjectStatus.COMPLETED]: "bg-green-100 text-green-800",
-  [ProjectStatus.ON_HOLD]: "bg-orange-100 text-orange-800",
+  [ProjectStatus.IN_PROGRESS]: "bg-green-100 text-green-800",
+  [ProjectStatus.ON_HOLD]: "bg-yellow-100 text-yellow-800",
+  [ProjectStatus.COMPLETED]: "bg-purple-100 text-purple-800",
   [ProjectStatus.CANCELLED]: "bg-red-100 text-red-800",
 };
+
+interface ProjectType {
+  id: string;
+  name: string;
+  description: string | null;
+  status: string;
+  organizationId: string;
+  createdById: string;
+  createdAt: string;
+  updatedAt: string;
+  clientName?: string | null;
+  projectType?: string | null;
+  organization: {
+    name: string;
+    type: string;
+  };
+  createdBy: {
+    name: string | null;
+    username: string | null;
+  };
+  viewers: unknown[];
+  budgetProjects: unknown[];
+  _count?: {
+    viewers: number;
+    budgets: number;
+  };
+}
 
 export default function ProjectsPage() {
   const { activeOrganization, activeRole } = useOrganization();
 
-  // Use React Query hook instead of useState and useEffect
   const {
     data: projects = [],
     isLoading,
@@ -62,8 +88,9 @@ export default function ProjectsPage() {
     isLoading: isLoadingLimit,
   } = useProjectLimit(activeOrganization?.id);
 
+  // Check if the user can create projects
   const canCreateProject =
-    activeRole && [MemberRole.ADMIN, MemberRole.MEMBER].includes(activeRole);
+    activeRole === MemberRole.ADMIN || activeRole === MemberRole.MEMBER;
 
   if (!activeOrganization) {
     return (
@@ -129,7 +156,7 @@ export default function ProjectsPage() {
             <div>
               <p className="font-medium">Project limit reached</p>
               <p className="text-sm">
-                You've reached your limit of {projectLimit.limit} projects.
+                You&apos;ve reached your limit of {projectLimit.limit} projects.
                 Upgrade your plan to create more projects.
               </p>
             </div>
@@ -139,97 +166,89 @@ export default function ProjectsPage() {
           </div>
         )}
 
-        {error instanceof Error && (
+        {error && (
           <div className="p-4 bg-red-50 border border-red-200 text-red-600 rounded-md">
-            {error.message}
+            {error instanceof Error ? error.message : "Failed to load projects"}
           </div>
         )}
 
         {isLoading ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {[1, 2, 3].map((n) => (
-              <Card key={n} className="animate-pulse">
-                <CardHeader className="space-y-2">
-                  <div className="h-4 bg-muted rounded w-3/4"></div>
-                  <div className="h-3 bg-muted rounded w-1/2"></div>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-2">
-                    <div className="h-3 bg-muted rounded"></div>
-                    <div className="h-3 bg-muted rounded w-5/6"></div>
-                  </div>
-                </CardContent>
-              </Card>
+            {[...Array(6)].map((_, i) => (
+              <div key={i} className="border rounded-lg p-4 space-y-3">
+                <div className="h-6 bg-gray-200 rounded w-2/3 animate-pulse"></div>
+                <div className="h-4 bg-gray-200 rounded w-1/2 animate-pulse"></div>
+                <div className="h-10 bg-gray-200 rounded w-full animate-pulse"></div>
+              </div>
             ))}
           </div>
         ) : projects.length === 0 ? (
-          <Card>
-            <CardHeader>
-              <CardTitle>No projects found</CardTitle>
-              <CardDescription>
-                {canCreateProject
-                  ? "Create your first project to get started"
-                  : "You don't have access to any projects yet"}
-              </CardDescription>
-            </CardHeader>
-          </Card>
+          <div className="text-center p-12 border rounded-lg">
+            <p className="text-muted-foreground">No projects found.</p>
+            {canCreateProject && !projectLimit.limitReached && (
+              <Button asChild className="mt-4">
+                <Link href="/projects/new">Create Project</Link>
+              </Button>
+            )}
+          </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {projects.map((project: Project) => (
+            {projects.map((project: ProjectType) => (
               <Link key={project.id} href={`/projects/${project.id}`}>
                 <Card className="hover:shadow-md transition-shadow cursor-pointer h-full">
-                  <CardHeader>
-                    <div className="flex justify-between items-start">
-                      <CardTitle className="line-clamp-2">
-                        {project.name}
-                      </CardTitle>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="flex justify-between items-start">
+                      <span className="truncate">{project.name}</span>
                       <Badge
-                        variant="secondary"
-                        className={`flex items-center gap-1 ${
+                        className={
                           statusColors[project.status as ProjectStatus]
-                        }`}
+                        }
                       >
-                        {statusIcons[project.status as ProjectStatus]}
-                        {project.status}
+                        <span className="flex items-center gap-1">
+                          {statusIcons[project.status as ProjectStatus]}
+                          <span>
+                            {project.status.charAt(0) +
+                              project.status
+                                .slice(1)
+                                .toLowerCase()
+                                .replace("_", " ")}
+                          </span>
+                        </span>
                       </Badge>
-                    </div>
-                    <CardDescription className="line-clamp-2">
-                      {project.description || "No description"}
-                    </CardDescription>
+                    </CardTitle>
+                    {project.description && (
+                      <CardDescription className="line-clamp-2">
+                        {project.description}
+                      </CardDescription>
+                    )}
                   </CardHeader>
                   <CardContent>
-                    <div className="space-y-3">
-                      {project.clientName && (
-                        <div className="flex items-center text-sm">
-                          <span className="font-medium mr-2">Client:</span>
-                          <span className="text-muted-foreground">
-                            {project.clientName}
-                          </span>
+                    <div className="text-sm text-muted-foreground">
+                      <p className="truncate">
+                        {project.clientName
+                          ? `Client: ${project.clientName}`
+                          : "No client specified"}
+                      </p>
+                      <p className="truncate">
+                        {project.projectType
+                          ? `Type: ${project.projectType}`
+                          : "Type not specified"}
+                      </p>
+                    </div>
+                    <div className="flex justify-between items-center mt-4 text-xs text-muted-foreground">
+                      <div className="flex gap-4">
+                        <div className="flex items-center gap-1">
+                          <Users className="w-4 h-4" />
+                          <span>{project.viewers?.length || 0}</span>
                         </div>
-                      )}
-                      {project.projectType && (
-                        <div className="flex items-center text-sm">
-                          <span className="font-medium mr-2">Type:</span>
-                          <span className="text-muted-foreground">
-                            {project.projectType}
-                          </span>
+                        <div className="flex items-center gap-1">
+                          <FileSpreadsheet className="w-4 h-4" />
+                          <span>{project.budgetProjects?.length || 0}</span>
                         </div>
-                      )}
-                      <div className="flex items-center justify-between text-sm text-muted-foreground pt-2 border-t">
-                        <div className="flex items-center gap-4">
-                          <div className="flex items-center gap-1">
-                            <Users className="w-4 h-4" />
-                            <span>{project._count.viewers}</span>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <FileSpreadsheet className="w-4 h-4" />
-                            <span>{project._count.budgets}</span>
-                          </div>
-                        </div>
-                        <div>
-                          Updated{" "}
-                          {new Date(project.updatedAt).toLocaleDateString()}
-                        </div>
+                      </div>
+                      <div>
+                        Created:{" "}
+                        {new Date(project.createdAt).toLocaleDateString()}
                       </div>
                     </div>
                   </CardContent>

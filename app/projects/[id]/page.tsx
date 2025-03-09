@@ -42,10 +42,43 @@ import {
   CheckCircle2,
   PauseCircle,
   XCircle,
+  Building,
+  MapPin,
+  Calendar,
+  Phone,
+  Mail,
+  Home,
+  MoreHorizontal,
 } from "lucide-react";
 import Link from "next/link";
 import React from "react";
 import { useProject, useDeleteProject } from "@/hooks/useProjects";
+
+// Add interface for BudgetProject
+interface BudgetProject {
+  id: string;
+  budgetId: string;
+  projectId: string;
+  budget: {
+    id: string;
+    title: string;
+    description: string | null;
+  };
+}
+
+// Add interface for ProjectViewer
+interface ProjectViewer {
+  id: string;
+  userId: string;
+  projectId: string;
+  user: {
+    id: string;
+    name: string | null;
+    email: string | null;
+    username: string | null;
+    image: string | null;
+  };
+}
 
 const statusIcons = {
   [ProjectStatus.PLANNING]: <ClipboardList className="w-4 h-4" />,
@@ -358,45 +391,39 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
                 </p>
               ) : (
                 <div className="space-y-4">
-                  {project.viewers.map((viewer) => (
+                  {project.viewers.map((viewer: ProjectViewer) => (
                     <div
                       key={viewer.id}
-                      className="flex items-center justify-between"
+                      className="flex items-center gap-2 p-2 rounded-md hover:bg-muted"
                     >
-                      <div className="flex items-center gap-3">
-                        <Avatar>
-                          <AvatarImage src={viewer.user.image || undefined} />
+                      <Avatar className="h-8 w-8">
+                        {viewer.user.image ? (
+                          <AvatarImage
+                            src={viewer.user.image}
+                            alt={viewer.user.name || ""}
+                          />
+                        ) : (
                           <AvatarFallback>
-                            {(
-                              viewer.user.name?.[0] ||
-                              viewer.user.username?.[0] ||
-                              "?"
-                            ).toUpperCase()}
+                            {viewer.user.name
+                              ? viewer.user.name
+                                  .split(" ")
+                                  .map((n) => n[0])
+                                  .join("")
+                                  .toUpperCase()
+                              : "?"}
                           </AvatarFallback>
-                        </Avatar>
-                        <div>
-                          <p className="font-medium">
-                            {viewer.user.name || viewer.user.username}
-                          </p>
-                          <p className="text-sm text-muted-foreground">
-                            {viewer.user.email}
-                          </p>
-                        </div>
+                        )}
+                      </Avatar>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">
+                          {viewer.user.name || "Unknown User"}
+                        </p>
+                        <p className="text-xs text-muted-foreground truncate">
+                          {viewer.user.email ||
+                            viewer.user.username ||
+                            "No contact info"}
+                        </p>
                       </div>
-                      {canEdit && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="text-red-600"
-                          asChild
-                        >
-                          <Link
-                            href={`/projects/${project.id}/viewers/${viewer.id}/remove`}
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Link>
-                        </Button>
-                      )}
                     </div>
                   ))}
                 </div>
@@ -405,39 +432,44 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
           </Card>
         </div>
 
-        {project.budgets.length > 0 && (
+        {project.budgetProjects && project.budgetProjects.length > 0 && (
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
               <div>
-                <CardTitle>Project Budgets</CardTitle>
+                <CardTitle>Budgets</CardTitle>
                 <CardDescription>
-                  Manage budgets associated with this project
+                  Budgets associated with this project
                 </CardDescription>
               </div>
               {canEdit && (
-                <Button size="sm" asChild>
-                  <Link href={`/budgets/new?projectId=${project.id}`}>
-                    <FileSpreadsheet className="w-4 h-4 mr-2" />
-                    New Budget
+                <Button variant="outline" size="sm" asChild>
+                  <Link href={`/projects/${project.id}/budgets/new`}>
+                    Add Budget
                   </Link>
                 </Button>
               )}
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {project.budgets.map((budget) => (
+                {project.budgetProjects.map((budgetProject: BudgetProject) => (
                   <div
-                    key={budget.id}
-                    className="flex items-center justify-between p-4 rounded-lg border"
+                    key={budgetProject.id}
+                    className="flex items-center justify-between border-b pb-4 last:border-0 last:pb-0"
                   >
                     <div>
-                      <h3 className="font-medium">{budget.title}</h3>
-                      <p className="text-sm text-muted-foreground">
-                        {budget.description || "No description"}
-                      </p>
+                      <h3 className="font-medium">
+                        {budgetProject.budget.title}
+                      </h3>
+                      {budgetProject.budget.description && (
+                        <p className="text-sm text-muted-foreground">
+                          {budgetProject.budget.description}
+                        </p>
+                      )}
                     </div>
-                    <Button variant="ghost" size="sm" asChild>
-                      <Link href={`/budgets/${budget.id}`}>View Budget</Link>
+                    <Button variant="outline" size="sm" asChild>
+                      <Link href={`/budgets/${budgetProject.budget.id}`}>
+                        View
+                      </Link>
                     </Button>
                   </div>
                 ))}

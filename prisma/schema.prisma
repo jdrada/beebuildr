@@ -106,16 +106,28 @@ model OrganizationMember {
 }
 
 model Budget {
-  id             String        @id @default(cuid())
+  id             String           @id @default(cuid())
   title          String
   description    String?
+  isTemplate     Boolean          @default(false)  // Whether this budget is a reusable template
   organizationId String
-  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   budgetItems    BudgetItem[]
-  project        Project?      @relation(fields: [projectId], references: [id])
-  projectId      String?
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
+  budgetProjects BudgetProject[]  // Relation to BudgetProject for all project associations
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+}
+
+// Junction model for connecting budgets to projects
+model BudgetProject {
+  id          String   @id @default(cuid())
+  budgetId    String
+  projectId   String
+  budget      Budget   @relation(fields: [budgetId], references: [id], onDelete: Cascade)
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+
+  @@unique([budgetId, projectId])
 }
 
 model Item {
@@ -147,10 +159,10 @@ model BudgetItem {
 
 // Project model with enhanced fields
 model Project {
-  id              String       @id @default(cuid())
+  id              String          @id @default(cuid())
   name            String
   description     String?
-  status          ProjectStatus @default(PLANNING)
+  status          ProjectStatus   @default(PLANNING)
   
   // Client Information
   clientName      String?      // Full name or company name
@@ -169,7 +181,7 @@ model Project {
   // Existing fields
   organizationId  String
   organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  budgets         Budget[]
+  budgetProjects  BudgetProject[] // New relation for both template and project-specific budgets
   viewers         ProjectViewer[]
   createdById     String
   createdBy       User         @relation(fields: [createdById], references: [id])

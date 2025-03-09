@@ -280,3 +280,61 @@ export function useProjectLimit(organizationId: string | undefined) {
     enabled: !!organizationId,
   });
 }
+
+// Add a hook for updating projects
+export function useUpdateProject() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      projectId,
+      data,
+    }: {
+      projectId: string;
+      data: {
+        name: string;
+        description?: string | null;
+        status?: ProjectStatus;
+
+        // Client Information
+        clientName?: string | null;
+        contactPerson?: string | null;
+        clientPhone?: string | null;
+        clientEmail?: string | null;
+        billingAddress?: string | null;
+
+        // Project Information
+        projectAddress?: string | null;
+        projectType?: ProjectType | null;
+        projectScope?: string | null;
+        startDate?: Date | string | null;
+        endDate?: Date | string | null;
+      };
+    }) => {
+      const response = await fetch(`/api/projects/${projectId}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(data),
+      });
+
+      const responseData = await response.json();
+
+      if (!response.ok) {
+        throw new Error(responseData.error || "Failed to update project");
+      }
+
+      return responseData.project;
+    },
+    onSuccess: (_, variables) => {
+      // Invalidate project query to refetch the details
+      queryClient.invalidateQueries({
+        queryKey: ["project", variables.projectId],
+      });
+
+      // Also invalidate projects list
+      queryClient.invalidateQueries({ queryKey: ["projects"] });
+    },
+  });
+}

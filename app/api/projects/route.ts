@@ -112,16 +112,7 @@ export async function GET(req: NextRequest) {
         where: {
           organizationId,
         },
-        orderBy: {
-          updatedAt: "desc",
-        },
         include: {
-          budgets: {
-            select: {
-              id: true,
-              title: true,
-            },
-          },
           organization: {
             select: {
               name: true,
@@ -134,36 +125,36 @@ export async function GET(req: NextRequest) {
               username: true,
             },
           },
-          _count: {
-            select: {
-              viewers: true,
-              budgets: true,
+          budgetProjects: {
+            include: {
+              budget: true,
             },
           },
+        },
+        orderBy: {
+          updatedAt: "desc",
         },
       });
-    }
-    // For viewers, only show projects they've been specifically given access to
-    else {
+    } else {
+      // For viewers, only show projects they have access to
       projects = await prisma.project.findMany({
         where: {
-          organizationId,
-          viewers: {
-            some: {
-              userId,
+          OR: [
+            {
+              organizationId,
+              createdById: userId,
             },
-          },
-        },
-        orderBy: {
-          updatedAt: "desc",
+            {
+              organizationId,
+              viewers: {
+                some: {
+                  userId,
+                },
+              },
+            },
+          ],
         },
         include: {
-          budgets: {
-            select: {
-              id: true,
-              title: true,
-            },
-          },
           organization: {
             select: {
               name: true,
@@ -176,12 +167,14 @@ export async function GET(req: NextRequest) {
               username: true,
             },
           },
-          _count: {
-            select: {
-              viewers: true,
-              budgets: true,
+          budgetProjects: {
+            include: {
+              budget: true,
             },
           },
+        },
+        orderBy: {
+          updatedAt: "desc",
         },
       });
     }

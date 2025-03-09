@@ -1,29 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { prisma } from "@/lib/prisma";
-import { z } from "zod";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import {
   checkProjectViewPermission,
   checkProjectEditPermission,
   checkProjectDeletePermission,
 } from "@/lib/project-utils";
-import { ProjectStatus } from "@prisma/client";
-
-// Validate project update
-const updateProjectSchema = z.object({
-  name: z.string().min(1).max(255).optional(),
-  description: z.string().optional().nullable(),
-  status: z
-    .enum([
-      ProjectStatus.PLANNING,
-      ProjectStatus.IN_PROGRESS,
-      ProjectStatus.ON_HOLD,
-      ProjectStatus.COMPLETED,
-      ProjectStatus.CANCELLED,
-    ])
-    .optional(),
-});
+import { ProjectStatus, ProjectType } from "@prisma/client";
 
 // GET /api/projects/[id] - Get a single project
 export async function GET(
@@ -52,13 +36,17 @@ export async function GET(
     const project = await prisma.project.findUnique({
       where: { id: projectId },
       include: {
-        budgets: {
-          select: {
-            id: true,
-            title: true,
-            description: true,
-            createdAt: true,
-            updatedAt: true,
+        budgetProjects: {
+          include: {
+            budget: {
+              select: {
+                id: true,
+                title: true,
+                description: true,
+                createdAt: true,
+                updatedAt: true,
+              },
+            },
           },
         },
         organization: {
@@ -93,7 +81,6 @@ export async function GET(
         _count: {
           select: {
             viewers: true,
-            budgets: true,
           },
         },
       },
@@ -121,6 +108,7 @@ export async function PATCH(
   { params }: { params: { id: string } }
 ) {
   try {
+    // Get the current user from the session
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -140,11 +128,28 @@ export async function PATCH(
 
     // Parse and validate the request body
     const body = await req.json();
-    const result = updateProjectSchema.safeParse(body);
 
-    if (!result.success) {
+    // Extract the fields to update
+    const {
+      name,
+      description,
+      status,
+      clientName,
+      contactPerson,
+      clientPhone,
+      clientEmail,
+      billingAddress,
+      projectAddress,
+      projectType,
+      projectScope,
+      startDate,
+      endDate,
+    } = body;
+
+    // Validate required fields
+    if (!name) {
       return NextResponse.json(
-        { error: "Invalid request", details: result.error.format() },
+        { error: "Project name is required" },
         { status: 400 }
       );
     }
@@ -152,7 +157,22 @@ export async function PATCH(
     // Update the project
     const updatedProject = await prisma.project.update({
       where: { id: projectId },
-      data: result.data,
+      data: {
+        name,
+        description,
+        status,
+        clientName,
+        contactPerson,
+        clientPhone,
+        clientEmail,
+        billingAddress,
+        projectAddress,
+        projectType,
+        projectScope,
+        startDate: startDate ? new Date(startDate) : null,
+        endDate: endDate ? new Date(endDate) : null,
+        updatedAt: new Date(),
+      },
       include: {
         organization: {
           select: {

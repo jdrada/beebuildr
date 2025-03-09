@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { prisma } from "@/lib/prisma";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
-import { checkProjectLimit } from "@/lib/organization-utils";
 
 export async function GET(
   req: NextRequest,
@@ -15,9 +14,7 @@ export async function GET(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Use await with params to ensure it's resolved
-    const { id } = await Promise.resolve(params);
-    const organizationId = id;
+    const organizationId = params.id;
 
     // Check if the user is a member of this organization
     const membership = await prisma.organizationMember.findFirst({
@@ -34,14 +31,41 @@ export async function GET(
       );
     }
 
-    // Check the project limit for this organization
-    const projectLimit = await checkProjectLimit(organizationId);
+    // Get query parameters
+    const searchParams = req.nextUrl.searchParams;
+    const isTemplate = searchParams.get("isTemplate");
 
-    return NextResponse.json(projectLimit);
+    // Build the where clause
+    const where: any = { organizationId };
+
+    // Filter by template status if specified
+    if (isTemplate === "true") {
+      where.isTemplate = true;
+    } else if (isTemplate === "false") {
+      where.isTemplate = false;
+    }
+
+    // Get all budgets for this organization
+    const budgets = await prisma.budget.findMany({
+      where,
+      include: {
+        budgetItems: {
+          include: {
+            item: true,
+          },
+        },
+        budgetProjects: true,
+      },
+      orderBy: {
+        updatedAt: "desc",
+      },
+    });
+
+    return NextResponse.json({ budgets });
   } catch (error) {
-    console.error("Error checking project limit:", error);
+    console.error("Error fetching organization budgets:", error);
     return NextResponse.json(
-      { error: "Failed to check project limit" },
+      { error: "Failed to fetch organization budgets" },
       { status: 500 }
     );
   }

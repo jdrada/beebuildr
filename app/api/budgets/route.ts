@@ -1,15 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { prisma } from "@/lib/prisma";
+import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { z } from "zod";
+import { MemberRole } from "@prisma/client";
 
 // Enum definitions to avoid importing from Prisma client
-enum MemberRole {
-  ADMIN = "ADMIN",
-  MEMBER = "MEMBER",
-  VIEWER = "VIEWER",
-}
-
 enum OrganizationType {
   CONTRACTOR = "CONTRACTOR",
   STORE = "STORE",
@@ -20,6 +16,15 @@ const budgetSchema = z.object({
   title: z.string().min(1).max(255),
   description: z.string().optional(),
   organizationId: z.string(),
+});
+
+// Validate budget creation request
+const createBudgetSchema = z.object({
+  title: z.string().min(1, "Title is required").max(255),
+  description: z.string().optional().nullable(),
+  isTemplate: z.boolean().default(false),
+  organizationId: z.string().min(1, "Organization ID is required"),
+  projectId: z.string().optional(),
 });
 
 // Check if the user has permission to perform budget actions
@@ -141,14 +146,15 @@ export async function GET(req: NextRequest) {
 // POST /api/budgets - Create a new budget
 export async function POST(req: NextRequest) {
   try {
-    const session = await getServerSession();
-    if (!session?.user) {
+    // Get the current user from the session
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     // Parse and validate the request body
     const body = await req.json();
-    const result = budgetSchema.safeParse(body);
+    const result = createBudgetSchema.safeParse(body);
 
     if (!result.success) {
       return NextResponse.json(
@@ -157,20 +163,45 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { title, description, organizationId } = result.data;
+    const { title, description, isTemplate, organizationId, projectId } =
+      result.data;
 
-    // Check permission - only ADMIN and MEMBER can create budgets
-    const permissionCheck = await checkPermission(
-      session.user.id,
-      organizationId,
-      [MemberRole.ADMIN, MemberRole.MEMBER]
-    );
+    // Check if the user is a member of this organization
+    const membership = await prisma.organizationMember.findFirst({
+      where: {
+        userId: session.user.id,
+        organizationId,
+        role: {
+          in: [MemberRole.ADMIN, MemberRole.MEMBER],
+        },
+      },
+    });
 
-    if (!permissionCheck.allowed) {
+    if (!membership) {
       return NextResponse.json(
-        { error: permissionCheck.error },
-        { status: permissionCheck.status }
+        {
+          error:
+            "You don't have permission to create budgets in this organization",
+        },
+        { status: 403 }
       );
+    }
+
+    // If projectId is provided, check if the project exists and belongs to the organization
+    if (projectId) {
+      const project = await prisma.project.findFirst({
+        where: {
+          id: projectId,
+          organizationId,
+        },
+      });
+
+      if (!project) {
+        return NextResponse.json(
+          { error: "Project not found or doesn't belong to this organization" },
+          { status: 404 }
+        );
+      }
     }
 
     // Create the budget
@@ -179,10 +210,33 @@ export async function POST(req: NextRequest) {
         title,
         description,
         organizationId,
+        ...(projectId && {
+          budgetProjects: {
+            create: {
+              projectId,
+            },
+          },
+        }),
+      },
+      include: {
+        budgetItems: true,
       },
     });
 
-    return NextResponse.json({ budget }, { status: 201 });
+    // Update the isTemplate field separately since it's not in the schema yet
+    const updatedBudget = await prisma.budget.update({
+      where: { id: budget.id },
+      data: { isTemplate },
+      include: {
+        budgetItems: true,
+      },
+    });
+
+    return NextResponse.json({
+      success: true,
+      message: "Budget created successfully",
+      budget: updatedBudget,
+    });
   } catch (error) {
     console.error("Error creating budget:", error);
     return NextResponse.json(
