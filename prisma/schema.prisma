@@ -75,15 +75,19 @@ enum OrganizationType {
 }
 
 model Organization {
-  id          String           @id @default(cuid())
-  name        String
-  type        OrganizationType
-  members     OrganizationMember[]
-  budgets     Budget[]        // Only for CONTRACTOR orgs
-  items       Item[]          // Only for STORE orgs
-  projects    Project[]       // Only for CONTRACTOR orgs
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
+  id              String          @id @default(cuid())
+  name            String
+  type            OrganizationType
+  members         OrganizationMember[]
+  projects        Project[]
+  budgets         Budget[]
+  items           Item[]
+  unitPriceAnalyses UnitPriceAnalysis[]
+  materials       Material[]      // New relation
+  equipment       Equipment[]     // New relation
+  labor           Labor[]         // New relation
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
 }
 
 enum MemberRole {
@@ -219,4 +223,150 @@ enum ProjectType {
   INFRASTRUCTURE
   RENOVATION
   OTHER
+}
+
+// Unit Price Analysis (UPA) model
+model UnitPriceAnalysis {
+  id                   String        @id @default(cuid())
+  title                String
+  description          String?
+  code                 String?
+  unit                 String
+  totalPrice           Decimal       @default(0) @db.Decimal(10, 2)
+  isPublic             Boolean       @default(false)
+  hasAnnualMaintenance Boolean       @default(false)
+  maintenanceYears     Int?
+  annualMaintenanceRate Decimal?     @db.Decimal(5, 2)
+  organizationId       String
+  organization         Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  materials            UPAMaterial[]
+  labor               UPALabor[]
+  equipment           UPAEquipment[]
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+
+  @@index([organizationId])
+}
+
+// UPA Material component
+model UPAMaterial {
+  id                 String           @id @default(cuid())
+  code               String?
+  name               String
+  description        String?
+  quantity           Decimal          @db.Decimal(10, 2)
+  unit               String
+  unitPrice          Decimal          @db.Decimal(10, 2)
+  totalPrice         Decimal          @db.Decimal(10, 2)
+  unitPriceAnalysisId String
+  unitPriceAnalysis   UnitPriceAnalysis @relation(fields: [unitPriceAnalysisId], references: [id], onDelete: Cascade)
+  // Reference to the original material in the library (optional)
+  materialId         String?
+  material           Material?        @relation(fields: [materialId], references: [id])
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  @@index([unitPriceAnalysisId])
+  @@index([materialId])
+}
+
+// UPA Labor component
+model UPALabor {
+  id                 String           @id @default(cuid())
+  code               String?
+  role               String
+  description        String?
+  quantity           Decimal          @db.Decimal(10, 2)
+  unit               String
+  unitPrice          Decimal          @db.Decimal(10, 2)
+  totalPrice         Decimal          @db.Decimal(10, 2)
+  unitPriceAnalysisId String
+  unitPriceAnalysis   UnitPriceAnalysis @relation(fields: [unitPriceAnalysisId], references: [id], onDelete: Cascade)
+  // Reference to the original labor in the library (optional)
+  laborId            String?
+  labor              Labor?           @relation(fields: [laborId], references: [id])
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  @@index([unitPriceAnalysisId])
+  @@index([laborId])
+}
+
+// UPA Equipment component
+model UPAEquipment {
+  id                 String           @id @default(cuid())
+  code               String?
+  name               String
+  description        String?
+  quantity           Decimal          @db.Decimal(10, 2)
+  unit               String
+  unitPrice          Decimal          @db.Decimal(10, 2)
+  totalPrice         Decimal          @db.Decimal(10, 2)
+  unitPriceAnalysisId String
+  unitPriceAnalysis   UnitPriceAnalysis @relation(fields: [unitPriceAnalysisId], references: [id], onDelete: Cascade)
+  // Reference to the original equipment in the library (optional)
+  equipmentId        String?
+  equipment          Equipment?       @relation(fields: [equipmentId], references: [id])
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  @@index([unitPriceAnalysisId])
+  @@index([equipmentId])
+}
+
+// Reusable Material component
+model Material {
+  id                 String           @id @default(cuid())
+  code               String?
+  name               String
+  description        String?
+  unit               String
+  unitPrice          Decimal          @db.Decimal(10, 2)
+  isPublic           Boolean          @default(false)
+  organizationId     String
+  organization       Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  // Reference to UPA materials that use this material
+  upaMaterials       UPAMaterial[]
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  @@index([organizationId])
+}
+
+// Reusable Labor component
+model Labor {
+  id                 String           @id @default(cuid())
+  code               String?
+  role               String
+  description        String?
+  unit               String
+  unitPrice          Decimal          @db.Decimal(10, 2)
+  isPublic           Boolean          @default(false)
+  organizationId     String
+  organization       Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  // Reference to UPA labor that use this labor
+  upaLabor           UPALabor[]
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  @@index([organizationId])
+}
+
+// Reusable Equipment component
+model Equipment {
+  id                 String           @id @default(cuid())
+  code               String?
+  name               String
+  description        String?
+  unit               String
+  unitPrice          Decimal          @db.Decimal(10, 2)
+  isPublic           Boolean          @default(false)
+  organizationId     String
+  organization       Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  // Reference to UPA equipment that use this equipment
+  upaEquipment       UPAEquipment[]
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  @@index([organizationId])
 }

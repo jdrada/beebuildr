@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { DashboardLayout } from "@/components/layouts/dashboard-layout";
 import { useOrganization } from "@/contexts/organization-context";
@@ -35,20 +35,12 @@ import {
   MoreVertical,
   Users,
   FileSpreadsheet,
-  Trash2,
   UserPlus,
   ClipboardList,
   Clock,
   CheckCircle2,
   PauseCircle,
   XCircle,
-  Building,
-  MapPin,
-  Calendar,
-  Phone,
-  Mail,
-  Home,
-  MoreHorizontal,
 } from "lucide-react";
 import Link from "next/link";
 import React from "react";
@@ -97,18 +89,18 @@ const statusColors = {
 };
 
 export default function ProjectPage({ params }: { params: { id: string } }) {
+  const router = useRouter();
+  const { activeOrganization, activeRole } = useOrganization();
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+
   // Unwrap params using React.use()
   const unwrappedParams = React.use(
     params as unknown as Promise<{ id: string }>
   );
   const projectId = unwrappedParams.id;
 
-  const router = useRouter();
-  const { activeOrganization, activeRole } = useOrganization();
-  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
-
   // Use React Query hooks
-  const { data: project, isLoading, error } = useProject(projectId);
+  const { data: project, isLoading, error, refetch } = useProject(projectId);
 
   const deleteProject = useDeleteProject();
 
@@ -134,6 +126,12 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
       }
     );
   };
+
+  // Add a useEffect to refetch the project data when the component mounts
+  useEffect(() => {
+    // Refetch the project data when the component mounts
+    refetch();
+  }, [refetch]);
 
   if (!activeOrganization) {
     return (
@@ -432,24 +430,35 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
           </Card>
         </div>
 
-        {project.budgetProjects && project.budgetProjects.length > 0 && (
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <div>
-                <CardTitle>Budgets</CardTitle>
-                <CardDescription>
-                  Budgets associated with this project
-                </CardDescription>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <div>
+              <CardTitle>Budget</CardTitle>
+              <CardDescription>Budget for this project</CardDescription>
+            </div>
+            {canEdit && project.budgetProjects.length === 0 && (
+              <Button variant="outline" size="sm" asChild>
+                <Link href={`/projects/${project.id}/budgets/new`}>
+                  Add Budget
+                </Link>
+              </Button>
+            )}
+          </CardHeader>
+          <CardContent>
+            {project.budgetProjects.length === 0 ? (
+              <div className="text-center p-6">
+                <p className="text-muted-foreground">
+                  No budget has been created for this project yet.
+                </p>
+                {canEdit && (
+                  <Button className="mt-4" asChild>
+                    <Link href={`/projects/${project.id}/budgets/new`}>
+                      Create Budget
+                    </Link>
+                  </Button>
+                )}
               </div>
-              {canEdit && (
-                <Button variant="outline" size="sm" asChild>
-                  <Link href={`/projects/${project.id}/budgets/new`}>
-                    Add Budget
-                  </Link>
-                </Button>
-              )}
-            </CardHeader>
-            <CardContent>
+            ) : (
               <div className="space-y-4">
                 {project.budgetProjects.map((budgetProject: BudgetProject) => (
                   <div
@@ -474,9 +483,9 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
                   </div>
                 ))}
               </div>
-            </CardContent>
-          </Card>
-        )}
+            )}
+          </CardContent>
+        </Card>
 
         <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
           <DialogContent>

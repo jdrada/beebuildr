@@ -27,6 +27,16 @@ const navItems: NavItem[] = [
     showFor: [OrganizationType.CONTRACTOR],
   },
   {
+    title: "Unit Price Analyses",
+    href: "/unit-price-analyses",
+    showFor: [OrganizationType.CONTRACTOR],
+  },
+  {
+    title: "Components Library",
+    href: "/components-library",
+    showFor: [OrganizationType.CONTRACTOR],
+  },
+  {
     title: "Budgets",
     href: "/budgets",
     showFor: [OrganizationType.CONTRACTOR],

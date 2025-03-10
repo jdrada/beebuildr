@@ -145,6 +145,11 @@ export function useApplyBudget() {
       queryClient.invalidateQueries({
         queryKey: ["budget", variables.budgetId],
       });
+
+      // Also invalidate the project query to refresh the project page
+      queryClient.invalidateQueries({
+        queryKey: ["project", variables.projectId],
+      });
     },
   });
 }
@@ -194,9 +199,14 @@ export function useCreateBudget() {
       queryClient.invalidateQueries({
         queryKey: ["budgets", variables.organizationId],
       });
+
+      // If projectId is provided, invalidate project-budgets query and the project query
       if (variables.projectId) {
         queryClient.invalidateQueries({
           queryKey: ["project-budgets", variables.projectId],
+        });
+        queryClient.invalidateQueries({
+          queryKey: ["project", variables.projectId],
         });
       }
     },

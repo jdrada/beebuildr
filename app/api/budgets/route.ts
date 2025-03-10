@@ -188,11 +188,15 @@ export async function POST(req: NextRequest) {
     }
 
     // If projectId is provided, check if the project exists and belongs to the organization
+    // Also check if the project already has a budget
     if (projectId) {
       const project = await prisma.project.findFirst({
         where: {
           id: projectId,
           organizationId,
+        },
+        include: {
+          budgetProjects: true,
         },
       });
 
@@ -200,6 +204,17 @@ export async function POST(req: NextRequest) {
         return NextResponse.json(
           { error: "Project not found or doesn't belong to this organization" },
           { status: 404 }
+        );
+      }
+
+      // Check if the project already has a budget
+      if (project.budgetProjects.length > 0) {
+        return NextResponse.json(
+          {
+            error:
+              "This project already has a budget. Currently, only one budget per project is supported.",
+          },
+          { status: 400 }
         );
       }
     }
