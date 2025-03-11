@@ -21,12 +21,7 @@ import { useFieldArray, useForm } from "react-hook-form";
 import * as z from "zod";
 import Link from "next/link";
 import { ArrowLeft, Plus, Trash2, Search } from "lucide-react";
-import {
-  useCreateUnitPriceAnalysis,
-  type UPAMaterial,
-  type UPALabor,
-  type UPAEquipment,
-} from "@/hooks/useUnitPriceAnalysis";
+import { useCreateUnitPriceAnalysis } from "@/hooks/useUnitPriceAnalysis";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatCurrency } from "@/lib/utils";
@@ -39,6 +34,12 @@ import {
   Material,
   Labor,
   Equipment,
+  useCreateMaterial,
+  useCreateLabor,
+  useCreateEquipment,
+  CreateMaterialInput,
+  CreateLaborInput,
+  CreateEquipmentInput,
 } from "@/hooks/useComponentsLibrary";
 import {
   Dialog,
@@ -48,6 +49,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { useQueryClient } from "@tanstack/react-query";
 
 // Validate UPA material
 const materialSchema = z.object({
@@ -105,17 +107,27 @@ export default function NewUnitPriceAnalysisPage() {
   const router = useRouter();
   const { activeOrganization } = useOrganization();
   const [error, setError] = useState("");
-  const [activeTab, setActiveTab] = useState("basic");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [showMaterialsDialog, setShowMaterialsDialog] = useState(false);
   const [showLaborDialog, setShowLaborDialog] = useState(false);
   const [showEquipmentDialog, setShowEquipmentDialog] = useState(false);
 
+  // New state for add component dialogs
+  const [showAddMaterialDialog, setShowAddMaterialDialog] = useState(false);
+  const [showAddLaborDialog, setShowAddLaborDialog] = useState(false);
+  const [showAddEquipmentDialog, setShowAddEquipmentDialog] = useState(false);
+
   // Fetch components library data
   const { data: materialsData } = useMaterials(activeOrganization?.id);
   const { data: laborData } = useLabor(activeOrganization?.id);
   const { data: equipmentData } = useEquipment(activeOrganization?.id);
+
+  // Mutations for creating components
+  const createMaterial = useCreateMaterial();
+  const createLabor = useCreateLabor();
+  const createEquipment = useCreateEquipment();
+  const queryClient = useQueryClient();
 
   // Filter components based on search query
   const filteredMaterials = materialsData?.materials?.filter(
@@ -319,6 +331,73 @@ export default function NewUnitPriceAnalysisPage() {
     }
   };
 
+  // New functions to handle creating and adding components
+  const handleCreateMaterial = async (values: CreateMaterialInput) => {
+    if (!activeOrganization) return;
+
+    try {
+      const newMaterial = await createMaterial.mutateAsync({
+        ...values,
+        organizationId: activeOrganization.id,
+      });
+
+      // Add the new material to the UPA
+      addMaterialFromLibrary(newMaterial);
+
+      // Close the dialog
+      setShowAddMaterialDialog(false);
+
+      toast.success("Material created and added to UPA");
+    } catch (error) {
+      console.error("Error creating material:", error);
+      toast.error("Failed to create material");
+    }
+  };
+
+  const handleCreateLabor = async (values: CreateLaborInput) => {
+    if (!activeOrganization) return;
+
+    try {
+      const newLabor = await createLabor.mutateAsync({
+        ...values,
+        organizationId: activeOrganization.id,
+      });
+
+      // Add the new labor to the UPA
+      addLaborFromLibrary(newLabor);
+
+      // Close the dialog
+      setShowAddLaborDialog(false);
+
+      toast.success("Labor created and added to UPA");
+    } catch (error) {
+      console.error("Error creating labor:", error);
+      toast.error("Failed to create labor");
+    }
+  };
+
+  const handleCreateEquipment = async (values: CreateEquipmentInput) => {
+    if (!activeOrganization) return;
+
+    try {
+      const newEquipment = await createEquipment.mutateAsync({
+        ...values,
+        organizationId: activeOrganization.id,
+      });
+
+      // Add the new equipment to the UPA
+      addEquipmentFromLibrary(newEquipment);
+
+      // Close the dialog
+      setShowAddEquipmentDialog(false);
+
+      toast.success("Equipment created and added to UPA");
+    } catch (error) {
+      console.error("Error creating equipment:", error);
+      toast.error("Failed to create equipment");
+    }
+  };
+
   if (!activeOrganization) {
     return (
       <DashboardLayout>
@@ -332,705 +411,468 @@ export default function NewUnitPriceAnalysisPage() {
   // Render the materials section with library integration
   const renderMaterialsSection = () => (
     <div className="space-y-4">
-      <div className="flex justify-between items-center">
-        <h3 className="text-lg font-medium">Materials</h3>
-        <div className="flex space-x-2">
-          <Dialog
-            open={showMaterialsDialog}
-            onOpenChange={setShowMaterialsDialog}
-          >
-            <DialogTrigger asChild>
-              <Button variant="outline" size="sm">
-                From Library
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-3xl">
-              <DialogHeader>
-                <DialogTitle>Select Material from Library</DialogTitle>
-                <DialogDescription>
-                  Choose a material from your components library
-                </DialogDescription>
-              </DialogHeader>
-
-              <div className="relative mb-4">
-                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search materials..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-8"
-                  type="search"
-                />
-              </div>
-
-              <div className="max-h-[400px] overflow-y-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b">
-                      <th className="text-left py-2 px-4">Code</th>
-                      <th className="text-left py-2 px-4">Name</th>
-                      <th className="text-left py-2 px-4">Unit</th>
-                      <th className="text-left py-2 px-4">Price</th>
-                      <th className="text-right py-2 px-4">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredMaterials?.map((material) => (
-                      <tr
-                        key={material.id}
-                        className="border-b hover:bg-muted/50"
-                      >
-                        <td className="py-2 px-4">{material.code || "-"}</td>
-                        <td className="py-2 px-4">{material.name}</td>
-                        <td className="py-2 px-4">{material.unit}</td>
-                        <td className="py-2 px-4">
-                          {formatCurrency(material.unitPrice)}
-                        </td>
-                        <td className="py-2 px-4 text-right">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => addMaterialFromLibrary(material)}
-                          >
-                            Add
-                          </Button>
-                        </td>
-                      </tr>
-                    ))}
-                    {filteredMaterials?.length === 0 && (
-                      <tr>
-                        <td
-                          colSpan={5}
-                          className="py-4 text-center text-muted-foreground"
-                        >
-                          No materials found
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </DialogContent>
-          </Dialog>
-
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() =>
-              appendMaterial({
-                code: "",
-                name: "",
-                description: "",
-                quantity: 1,
-                unit: "",
-                unitPrice: 0,
-              })
-            }
-          >
-            <Plus className="mr-1 h-4 w-4" />
-            Add Material
-          </Button>
-        </div>
-      </div>
-
-      {materialFields.map((field, index) => (
-        <Card key={field.id}>
-          <CardHeader className="pb-2 flex flex-row justify-between items-start">
-            <CardTitle className="text-base">Material {index + 1}</CardTitle>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => removeMaterial(index)}
-            >
-              <Trash2 className="w-4 h-4 text-red-500" />
-            </Button>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <FormField
-              control={form.control}
-              name={`materials.${index}.name`}
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Name*</FormLabel>
-                  <FormControl>
-                    <Input placeholder="Material name" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name={`materials.${index}.code`}
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Code</FormLabel>
-                  <FormControl>
-                    <Input placeholder="Material code" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name={`materials.${index}.description`}
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Description</FormLabel>
-                  <FormControl>
-                    <Textarea
-                      placeholder="Material description"
-                      className="resize-none"
-                      {...field}
+      <div className="overflow-hidden border rounded-md">
+        <table className="w-full">
+          <thead className="bg-muted/50">
+            <tr>
+              <th className="text-left py-2 px-4 font-medium">Name</th>
+              <th className="text-left py-2 px-4 font-medium">Code</th>
+              <th className="text-left py-2 px-4 font-medium">Unit</th>
+              <th className="text-left py-2 px-4 font-medium">Quantity</th>
+              <th className="text-left py-2 px-4 font-medium">Unit Price</th>
+              <th className="text-right py-2 px-4 font-medium">Total</th>
+              <th className="text-right py-2 px-4 font-medium">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {materialFields.length === 0 ? (
+              <tr>
+                <td
+                  colSpan={7}
+                  className="py-4 text-center text-muted-foreground"
+                >
+                  No materials added yet
+                </td>
+              </tr>
+            ) : (
+              materialFields.map((field, index) => (
+                <tr key={field.id} className="border-t">
+                  <td className="py-3 px-4">
+                    <FormField
+                      control={form.control}
+                      name={`materials.${index}.name`}
+                      render={({ field }) => (
+                        <FormItem className="mb-0">
+                          <FormControl>
+                            <Input
+                              placeholder="Material name"
+                              {...field}
+                              className="border-0 shadow-none focus-visible:ring-0 p-0 h-auto"
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
                     />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <div className="grid grid-cols-3 gap-4">
-              <FormField
-                control={form.control}
-                name={`materials.${index}.quantity`}
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Quantity*</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        placeholder="0.00"
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name={`materials.${index}.unit`}
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Unit*</FormLabel>
-                    <FormControl>
-                      <Input placeholder="e.g., kg, m2" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name={`materials.${index}.unitPrice`}
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Unit Price*</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        placeholder="0.00"
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
-
-            <div className="flex justify-end">
-              <div className="text-right">
-                <p className="text-sm text-muted-foreground">Total</p>
-                <p className="font-medium">
-                  {formatCurrency(calculateMaterialTotal(index))}
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      ))}
+                  </td>
+                  <td className="py-3 px-4">
+                    <FormField
+                      control={form.control}
+                      name={`materials.${index}.code`}
+                      render={({ field }) => (
+                        <FormItem className="mb-0">
+                          <FormControl>
+                            <Input
+                              placeholder="Code"
+                              {...field}
+                              className="border-0 shadow-none focus-visible:ring-0 p-0 h-auto"
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </td>
+                  <td className="py-3 px-4">
+                    <FormField
+                      control={form.control}
+                      name={`materials.${index}.unit`}
+                      render={({ field }) => (
+                        <FormItem className="mb-0">
+                          <FormControl>
+                            <Input
+                              placeholder="Unit"
+                              {...field}
+                              className="border-0 shadow-none focus-visible:ring-0 p-0 h-auto"
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </td>
+                  <td className="py-3 px-4">
+                    <FormField
+                      control={form.control}
+                      name={`materials.${index}.quantity`}
+                      render={({ field }) => (
+                        <FormItem className="mb-0">
+                          <FormControl>
+                            <Input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              placeholder="0.00"
+                              {...field}
+                              onChange={(e) =>
+                                field.onChange(parseFloat(e.target.value) || 0)
+                              }
+                              className="border-0 shadow-none focus-visible:ring-0 p-0 h-auto"
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </td>
+                  <td className="py-3 px-4">
+                    <FormField
+                      control={form.control}
+                      name={`materials.${index}.unitPrice`}
+                      render={({ field }) => (
+                        <FormItem className="mb-0">
+                          <FormControl>
+                            <Input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              placeholder="0.00"
+                              {...field}
+                              onChange={(e) =>
+                                field.onChange(parseFloat(e.target.value) || 0)
+                              }
+                              className="border-0 shadow-none focus-visible:ring-0 p-0 h-auto"
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </td>
+                  <td className="py-3 px-4 text-right font-medium">
+                    {formatCurrency(calculateMaterialTotal(index))}
+                  </td>
+                  <td className="py-3 px-4 text-right">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => removeMaterial(index)}
+                      className="h-8 w-8 p-0"
+                    >
+                      <Trash2 className="h-4 w-4 text-red-500" />
+                    </Button>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 
   // Render the labor section with library integration
   const renderLaborSection = () => (
     <div className="space-y-4">
-      <div className="flex justify-between items-center">
-        <h3 className="text-lg font-medium">Labor</h3>
-        <div className="flex space-x-2">
-          <Dialog open={showLaborDialog} onOpenChange={setShowLaborDialog}>
-            <DialogTrigger asChild>
-              <Button variant="outline" size="sm">
-                From Library
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-3xl">
-              <DialogHeader>
-                <DialogTitle>Select Labor from Library</DialogTitle>
-                <DialogDescription>
-                  Choose labor from your components library
-                </DialogDescription>
-              </DialogHeader>
-
-              <div className="relative mb-4">
-                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search labor..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-8"
-                  type="search"
-                />
-              </div>
-
-              <div className="max-h-[400px] overflow-y-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b">
-                      <th className="text-left py-2 px-4">Code</th>
-                      <th className="text-left py-2 px-4">Role</th>
-                      <th className="text-left py-2 px-4">Unit</th>
-                      <th className="text-left py-2 px-4">Price</th>
-                      <th className="text-right py-2 px-4">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredLabor?.map((labor) => (
-                      <tr key={labor.id} className="border-b hover:bg-muted/50">
-                        <td className="py-2 px-4">{labor.code || "-"}</td>
-                        <td className="py-2 px-4">{labor.role}</td>
-                        <td className="py-2 px-4">{labor.unit}</td>
-                        <td className="py-2 px-4">
-                          {formatCurrency(labor.unitPrice)}
-                        </td>
-                        <td className="py-2 px-4 text-right">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => addLaborFromLibrary(labor)}
-                          >
-                            Add
-                          </Button>
-                        </td>
-                      </tr>
-                    ))}
-                    {filteredLabor?.length === 0 && (
-                      <tr>
-                        <td
-                          colSpan={5}
-                          className="py-4 text-center text-muted-foreground"
-                        >
-                          No labor found
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </DialogContent>
-          </Dialog>
-
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() =>
-              appendLabor({
-                code: "",
-                role: "",
-                description: "",
-                quantity: 1,
-                unit: "",
-                unitPrice: 0,
-              })
-            }
-          >
-            <Plus className="mr-1 h-4 w-4" />
-            Add Labor
-          </Button>
-        </div>
-      </div>
-
-      {laborFields.map((field, index) => (
-        <Card key={field.id}>
-          <CardHeader className="pb-2 flex flex-row justify-between items-start">
-            <CardTitle className="text-base">Labor {index + 1}</CardTitle>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => removeLabor(index)}
-            >
-              <Trash2 className="w-4 h-4 text-red-500" />
-            </Button>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <FormField
-              control={form.control}
-              name={`labor.${index}.role`}
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Role*</FormLabel>
-                  <FormControl>
-                    <Input placeholder="Worker role" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name={`labor.${index}.code`}
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Code</FormLabel>
-                  <FormControl>
-                    <Input placeholder="Labor code" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name={`labor.${index}.description`}
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Description</FormLabel>
-                  <FormControl>
-                    <Textarea
-                      placeholder="Labor description"
-                      className="resize-none"
-                      {...field}
+      <div className="overflow-hidden border rounded-md">
+        <table className="w-full">
+          <thead className="bg-muted/50">
+            <tr>
+              <th className="text-left py-2 px-4 font-medium">Role</th>
+              <th className="text-left py-2 px-4 font-medium">Code</th>
+              <th className="text-left py-2 px-4 font-medium">Unit</th>
+              <th className="text-left py-2 px-4 font-medium">Quantity</th>
+              <th className="text-left py-2 px-4 font-medium">Unit Price</th>
+              <th className="text-right py-2 px-4 font-medium">Total</th>
+              <th className="text-right py-2 px-4 font-medium">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {laborFields.length === 0 ? (
+              <tr>
+                <td
+                  colSpan={7}
+                  className="py-4 text-center text-muted-foreground"
+                >
+                  No labor added yet
+                </td>
+              </tr>
+            ) : (
+              laborFields.map((field, index) => (
+                <tr key={field.id} className="border-t">
+                  <td className="py-3 px-4">
+                    <FormField
+                      control={form.control}
+                      name={`labor.${index}.role`}
+                      render={({ field }) => (
+                        <FormItem className="mb-0">
+                          <FormControl>
+                            <Input
+                              placeholder="Labor role"
+                              {...field}
+                              className="border-0 shadow-none focus-visible:ring-0 p-0 h-auto"
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
                     />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <div className="grid grid-cols-3 gap-4">
-              <FormField
-                control={form.control}
-                name={`labor.${index}.quantity`}
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Quantity*</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        placeholder="0.00"
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name={`labor.${index}.unit`}
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Unit*</FormLabel>
-                    <FormControl>
-                      <Input placeholder="e.g., hours, days" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name={`labor.${index}.unitPrice`}
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Unit Price*</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        placeholder="0.00"
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
-
-            <div className="flex justify-end">
-              <div className="text-right">
-                <p className="text-sm text-muted-foreground">Total</p>
-                <p className="font-medium">
-                  {formatCurrency(calculateLaborTotal(index))}
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      ))}
+                  </td>
+                  <td className="py-3 px-4">
+                    <FormField
+                      control={form.control}
+                      name={`labor.${index}.code`}
+                      render={({ field }) => (
+                        <FormItem className="mb-0">
+                          <FormControl>
+                            <Input
+                              placeholder="Code"
+                              {...field}
+                              className="border-0 shadow-none focus-visible:ring-0 p-0 h-auto"
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </td>
+                  <td className="py-3 px-4">
+                    <FormField
+                      control={form.control}
+                      name={`labor.${index}.unit`}
+                      render={({ field }) => (
+                        <FormItem className="mb-0">
+                          <FormControl>
+                            <Input
+                              placeholder="Unit"
+                              {...field}
+                              className="border-0 shadow-none focus-visible:ring-0 p-0 h-auto"
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </td>
+                  <td className="py-3 px-4">
+                    <FormField
+                      control={form.control}
+                      name={`labor.${index}.quantity`}
+                      render={({ field }) => (
+                        <FormItem className="mb-0">
+                          <FormControl>
+                            <Input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              placeholder="0.00"
+                              {...field}
+                              onChange={(e) =>
+                                field.onChange(parseFloat(e.target.value) || 0)
+                              }
+                              className="border-0 shadow-none focus-visible:ring-0 p-0 h-auto"
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </td>
+                  <td className="py-3 px-4">
+                    <FormField
+                      control={form.control}
+                      name={`labor.${index}.unitPrice`}
+                      render={({ field }) => (
+                        <FormItem className="mb-0">
+                          <FormControl>
+                            <Input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              placeholder="0.00"
+                              {...field}
+                              onChange={(e) =>
+                                field.onChange(parseFloat(e.target.value) || 0)
+                              }
+                              className="border-0 shadow-none focus-visible:ring-0 p-0 h-auto"
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </td>
+                  <td className="py-3 px-4 text-right font-medium">
+                    {formatCurrency(calculateLaborTotal(index))}
+                  </td>
+                  <td className="py-3 px-4 text-right">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => removeLabor(index)}
+                      className="h-8 w-8 p-0"
+                    >
+                      <Trash2 className="h-4 w-4 text-red-500" />
+                    </Button>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 
   // Render the equipment section with library integration
   const renderEquipmentSection = () => (
     <div className="space-y-4">
-      <div className="flex justify-between items-center">
-        <h3 className="text-lg font-medium">Equipment</h3>
-        <div className="flex space-x-2">
-          <Dialog
-            open={showEquipmentDialog}
-            onOpenChange={setShowEquipmentDialog}
-          >
-            <DialogTrigger asChild>
-              <Button variant="outline" size="sm">
-                From Library
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-3xl">
-              <DialogHeader>
-                <DialogTitle>Select Equipment from Library</DialogTitle>
-                <DialogDescription>
-                  Choose equipment from your components library
-                </DialogDescription>
-              </DialogHeader>
-
-              <div className="relative mb-4">
-                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search equipment..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-8"
-                  type="search"
-                />
-              </div>
-
-              <div className="max-h-[400px] overflow-y-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b">
-                      <th className="text-left py-2 px-4">Code</th>
-                      <th className="text-left py-2 px-4">Name</th>
-                      <th className="text-left py-2 px-4">Unit</th>
-                      <th className="text-left py-2 px-4">Price</th>
-                      <th className="text-right py-2 px-4">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredEquipment?.map((equipment) => (
-                      <tr
-                        key={equipment.id}
-                        className="border-b hover:bg-muted/50"
-                      >
-                        <td className="py-2 px-4">{equipment.code || "-"}</td>
-                        <td className="py-2 px-4">{equipment.name}</td>
-                        <td className="py-2 px-4">{equipment.unit}</td>
-                        <td className="py-2 px-4">
-                          {formatCurrency(equipment.unitPrice)}
-                        </td>
-                        <td className="py-2 px-4 text-right">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => addEquipmentFromLibrary(equipment)}
-                          >
-                            Add
-                          </Button>
-                        </td>
-                      </tr>
-                    ))}
-                    {filteredEquipment?.length === 0 && (
-                      <tr>
-                        <td
-                          colSpan={5}
-                          className="py-4 text-center text-muted-foreground"
-                        >
-                          No equipment found
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </DialogContent>
-          </Dialog>
-
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() =>
-              appendEquipment({
-                code: "",
-                name: "",
-                description: "",
-                quantity: 1,
-                unit: "",
-                unitPrice: 0,
-              })
-            }
-          >
-            <Plus className="mr-1 h-4 w-4" />
-            Add Equipment
-          </Button>
-        </div>
-      </div>
-
-      {equipmentFields.map((field, index) => (
-        <Card key={field.id}>
-          <CardHeader className="pb-2 flex flex-row justify-between items-start">
-            <CardTitle className="text-base">Equipment {index + 1}</CardTitle>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => removeEquipment(index)}
-            >
-              <Trash2 className="w-4 h-4 text-red-500" />
-            </Button>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <FormField
-              control={form.control}
-              name={`equipment.${index}.name`}
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Name*</FormLabel>
-                  <FormControl>
-                    <Input placeholder="Equipment name" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name={`equipment.${index}.code`}
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Code</FormLabel>
-                  <FormControl>
-                    <Input placeholder="Equipment code" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name={`equipment.${index}.description`}
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Description</FormLabel>
-                  <FormControl>
-                    <Textarea
-                      placeholder="Equipment description"
-                      className="resize-none"
-                      {...field}
+      <div className="overflow-hidden border rounded-md">
+        <table className="w-full">
+          <thead className="bg-muted/50">
+            <tr>
+              <th className="text-left py-2 px-4 font-medium">Name</th>
+              <th className="text-left py-2 px-4 font-medium">Code</th>
+              <th className="text-left py-2 px-4 font-medium">Unit</th>
+              <th className="text-left py-2 px-4 font-medium">Quantity</th>
+              <th className="text-left py-2 px-4 font-medium">Unit Price</th>
+              <th className="text-right py-2 px-4 font-medium">Total</th>
+              <th className="text-right py-2 px-4 font-medium">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {equipmentFields.length === 0 ? (
+              <tr>
+                <td
+                  colSpan={7}
+                  className="py-4 text-center text-muted-foreground"
+                >
+                  No equipment added yet
+                </td>
+              </tr>
+            ) : (
+              equipmentFields.map((field, index) => (
+                <tr key={field.id} className="border-t">
+                  <td className="py-3 px-4">
+                    <FormField
+                      control={form.control}
+                      name={`equipment.${index}.name`}
+                      render={({ field }) => (
+                        <FormItem className="mb-0">
+                          <FormControl>
+                            <Input
+                              placeholder="Equipment name"
+                              {...field}
+                              className="border-0 shadow-none focus-visible:ring-0 p-0 h-auto"
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
                     />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <div className="grid grid-cols-3 gap-4">
-              <FormField
-                control={form.control}
-                name={`equipment.${index}.quantity`}
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Quantity*</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        placeholder="0.00"
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name={`equipment.${index}.unit`}
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Unit*</FormLabel>
-                    <FormControl>
-                      <Input placeholder="e.g., hours, days" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name={`equipment.${index}.unitPrice`}
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Unit Price*</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        placeholder="0.00"
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
-
-            <div className="flex justify-end">
-              <div className="text-right">
-                <p className="text-sm text-muted-foreground">Total</p>
-                <p className="font-medium">
-                  {formatCurrency(calculateEquipmentTotal(index))}
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      ))}
+                  </td>
+                  <td className="py-3 px-4">
+                    <FormField
+                      control={form.control}
+                      name={`equipment.${index}.code`}
+                      render={({ field }) => (
+                        <FormItem className="mb-0">
+                          <FormControl>
+                            <Input
+                              placeholder="Code"
+                              {...field}
+                              className="border-0 shadow-none focus-visible:ring-0 p-0 h-auto"
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </td>
+                  <td className="py-3 px-4">
+                    <FormField
+                      control={form.control}
+                      name={`equipment.${index}.unit`}
+                      render={({ field }) => (
+                        <FormItem className="mb-0">
+                          <FormControl>
+                            <Input
+                              placeholder="Unit"
+                              {...field}
+                              className="border-0 shadow-none focus-visible:ring-0 p-0 h-auto"
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </td>
+                  <td className="py-3 px-4">
+                    <FormField
+                      control={form.control}
+                      name={`equipment.${index}.quantity`}
+                      render={({ field }) => (
+                        <FormItem className="mb-0">
+                          <FormControl>
+                            <Input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              placeholder="0.00"
+                              {...field}
+                              onChange={(e) =>
+                                field.onChange(parseFloat(e.target.value) || 0)
+                              }
+                              className="border-0 shadow-none focus-visible:ring-0 p-0 h-auto"
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </td>
+                  <td className="py-3 px-4">
+                    <FormField
+                      control={form.control}
+                      name={`equipment.${index}.unitPrice`}
+                      render={({ field }) => (
+                        <FormItem className="mb-0">
+                          <FormControl>
+                            <Input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              placeholder="0.00"
+                              {...field}
+                              onChange={(e) =>
+                                field.onChange(parseFloat(e.target.value) || 0)
+                              }
+                              className="border-0 shadow-none focus-visible:ring-0 p-0 h-auto"
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </td>
+                  <td className="py-3 px-4 text-right font-medium">
+                    {formatCurrency(calculateEquipmentTotal(index))}
+                  </td>
+                  <td className="py-3 px-4 text-right">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => removeEquipment(index)}
+                      className="h-8 w-8 p-0"
+                    >
+                      <Trash2 className="h-4 w-4 text-red-500" />
+                    </Button>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 
   return (
     <DashboardLayout>
-      <div className="max-w-4xl mx-auto space-y-6">
+      <div className="max-w-6xl mx-auto space-y-6">
         <div className="flex items-center gap-4">
           <Button variant="ghost" size="icon" asChild>
             <Link href="/unit-price-analyses">
@@ -1053,20 +895,10 @@ export default function NewUnitPriceAnalysisPage() {
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
-            <Tabs
-              value={activeTab}
-              onValueChange={setActiveTab}
-              className="w-full"
-            >
-              <TabsList className="grid w-full grid-cols-4">
-                <TabsTrigger value="basic">Basic Information</TabsTrigger>
-                <TabsTrigger value="materials">Materials</TabsTrigger>
-                <TabsTrigger value="labor">Labor</TabsTrigger>
-                <TabsTrigger value="equipment">Equipment</TabsTrigger>
-              </TabsList>
-
-              {/* Basic Information Tab */}
-              <TabsContent value="basic" className="space-y-4 pt-4">
+            {/* Basic Information Section */}
+            <div className="bg-white p-6 rounded-lg border shadow-sm">
+              <h2 className="text-xl font-semibold mb-4">Basic Information</h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <FormField
                   control={form.control}
                   name="title"
@@ -1086,57 +918,54 @@ export default function NewUnitPriceAnalysisPage() {
 
                 <FormField
                   control={form.control}
-                  name="description"
+                  name="code"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Description</FormLabel>
+                      <FormLabel>Code</FormLabel>
                       <FormControl>
-                        <Textarea
-                          placeholder="Enter description"
-                          className="resize-none min-h-[100px]"
-                          {...field}
-                        />
+                        <Input placeholder="Enter code" {...field} />
                       </FormControl>
                       <FormDescription>
-                        Additional details about this analysis
+                        Optional reference code for this analysis
                       </FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <FormField
+                  control={form.control}
+                  name="unit"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Unit*</FormLabel>
+                      <FormControl>
+                        <Input placeholder="e.g., m², m³, each" {...field} />
+                      </FormControl>
+                      <FormDescription>
+                        The unit of measurement for this analysis
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <div className="md:col-span-2">
                   <FormField
                     control={form.control}
-                    name="code"
+                    name="description"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Code</FormLabel>
+                        <FormLabel>Description</FormLabel>
                         <FormControl>
-                          <Input
-                            placeholder="Enter code (optional)"
+                          <Textarea
+                            placeholder="Enter description"
+                            className="resize-none min-h-[100px]"
                             {...field}
                           />
                         </FormControl>
                         <FormDescription>
-                          Optional reference code
-                        </FormDescription>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="unit"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Unit*</FormLabel>
-                        <FormControl>
-                          <Input placeholder="e.g., m2, m3, each" {...field} />
-                        </FormControl>
-                        <FormDescription>
-                          Unit of measurement (m2, m3, etc.)
+                          Detailed description of what this analysis covers
                         </FormDescription>
                         <FormMessage />
                       </FormItem>
@@ -1144,7 +973,7 @@ export default function NewUnitPriceAnalysisPage() {
                   />
                 </div>
 
-                <div className="space-y-4">
+                <div className="md:col-span-2">
                   <FormField
                     control={form.control}
                     name="hasAnnualMaintenance"
@@ -1159,116 +988,736 @@ export default function NewUnitPriceAnalysisPage() {
                         <div className="space-y-1 leading-none">
                           <FormLabel>Include Annual Maintenance</FormLabel>
                           <FormDescription>
-                            Enable this to add annual maintenance costs to the
-                            analysis
+                            Calculate annual maintenance costs for this item
                           </FormDescription>
                         </div>
                       </FormItem>
                     )}
                   />
-
-                  {form.watch("hasAnnualMaintenance") && (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <FormField
-                        control={form.control}
-                        name="maintenanceYears"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Maintenance Years</FormLabel>
-                            <FormControl>
-                              <Input
-                                type="number"
-                                min="1"
-                                placeholder="e.g., 10"
-                                value={field.value ?? ""}
-                                onChange={(e) =>
-                                  field.onChange(
-                                    e.target.value
-                                      ? parseInt(e.target.value)
-                                      : null
-                                  )
-                                }
-                              />
-                            </FormControl>
-                            <FormDescription>
-                              Number of years to calculate maintenance costs
-                            </FormDescription>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-
-                      <FormField
-                        control={form.control}
-                        name="annualMaintenanceRate"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Annual Maintenance Rate (%)</FormLabel>
-                            <FormControl>
-                              <Input
-                                type="number"
-                                min="0"
-                                max="100"
-                                step="0.01"
-                                placeholder="e.g., 2.5"
-                                value={field.value ?? ""}
-                                onChange={(e) =>
-                                  field.onChange(
-                                    e.target.value
-                                      ? parseFloat(e.target.value)
-                                      : null
-                                  )
-                                }
-                              />
-                            </FormControl>
-                            <FormDescription>
-                              Percentage of total cost for annual maintenance
-                            </FormDescription>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    </div>
-                  )}
                 </div>
-              </TabsContent>
 
-              {/* Materials Tab */}
-              <TabsContent value="materials" className="space-y-4 pt-4">
-                {renderMaterialsSection()}
-              </TabsContent>
+                {form.watch("hasAnnualMaintenance") && (
+                  <>
+                    <FormField
+                      control={form.control}
+                      name="maintenanceYears"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Maintenance Years*</FormLabel>
+                          <FormControl>
+                            <Input
+                              type="number"
+                              min="1"
+                              placeholder="e.g., 5"
+                              {...field}
+                              onChange={(e) => {
+                                const value = e.target.value
+                                  ? parseInt(e.target.value)
+                                  : undefined;
+                                field.onChange(value);
+                              }}
+                            />
+                          </FormControl>
+                          <FormDescription>
+                            Number of years to calculate maintenance for
+                          </FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
 
-              {/* Labor Tab */}
-              <TabsContent value="labor" className="space-y-4 pt-4">
-                {renderLaborSection()}
-              </TabsContent>
-
-              {/* Equipment Tab */}
-              <TabsContent value="equipment" className="space-y-4 pt-4">
-                {renderEquipmentSection()}
-              </TabsContent>
-            </Tabs>
-
-            <div className="flex justify-between items-center pt-4 border-t">
-              <div>
-                <p className="text-lg font-semibold">Grand Total</p>
-                <p className="text-2xl font-bold">
-                  {formatCurrency(calculateGrandTotal())}
-                </p>
+                    <FormField
+                      control={form.control}
+                      name="annualMaintenanceRate"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Annual Maintenance Rate (%)*</FormLabel>
+                          <FormControl>
+                            <Input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              placeholder="e.g., 2.5"
+                              {...field}
+                              onChange={(e) => {
+                                const value = e.target.value
+                                  ? parseFloat(e.target.value)
+                                  : undefined;
+                                field.onChange(value);
+                              }}
+                            />
+                          </FormControl>
+                          <FormDescription>
+                            Percentage of initial cost for annual maintenance
+                          </FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </>
+                )}
               </div>
+            </div>
 
-              <div className="flex gap-4">
-                <Button variant="outline" asChild>
-                  <Link href="/unit-price-analyses">Cancel</Link>
-                </Button>
-                <Button type="submit" disabled={isSubmitting}>
-                  {isSubmitting ? "Creating..." : "Create Analysis"}
-                </Button>
+            {/* Materials Section */}
+            <div className="bg-white p-6 rounded-lg border shadow-sm">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xl font-semibold">Materials</h2>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowMaterialsDialog(true)}
+                  >
+                    <Search className="w-4 h-4 mr-2" />
+                    Add from Library
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowAddMaterialDialog(true)}
+                  >
+                    <Plus className="w-4 h-4 mr-2" />
+                    Create New
+                  </Button>
+                </div>
               </div>
+              {renderMaterialsSection()}
+            </div>
+
+            {/* Labor Section */}
+            <div className="bg-white p-6 rounded-lg border shadow-sm">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xl font-semibold">Labor</h2>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowLaborDialog(true)}
+                  >
+                    <Search className="w-4 h-4 mr-2" />
+                    Add from Library
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowAddLaborDialog(true)}
+                  >
+                    <Plus className="w-4 h-4 mr-2" />
+                    Create New
+                  </Button>
+                </div>
+              </div>
+              {renderLaborSection()}
+            </div>
+
+            {/* Equipment Section */}
+            <div className="bg-white p-6 rounded-lg border shadow-sm">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xl font-semibold">Equipment</h2>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowEquipmentDialog(true)}
+                  >
+                    <Search className="w-4 h-4 mr-2" />
+                    Add from Library
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowAddEquipmentDialog(true)}
+                  >
+                    <Plus className="w-4 h-4 mr-2" />
+                    Create New
+                  </Button>
+                </div>
+              </div>
+              {renderEquipmentSection()}
+            </div>
+
+            {/* Summary Section */}
+            <div className="bg-white p-6 rounded-lg border shadow-sm">
+              <h2 className="text-xl font-semibold mb-4">Summary</h2>
+              <div className="space-y-4">
+                <div className="flex justify-between items-center py-2 border-b">
+                  <span className="font-medium">Materials Total</span>
+                  <span>
+                    {formatCurrency(
+                      form
+                        .watch("materials")
+                        .reduce(
+                          (sum, material, index) =>
+                            sum + calculateMaterialTotal(index),
+                          0
+                        )
+                    )}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center py-2 border-b">
+                  <span className="font-medium">Labor Total</span>
+                  <span>
+                    {formatCurrency(
+                      form
+                        .watch("labor")
+                        .reduce(
+                          (sum, labor, index) =>
+                            sum + calculateLaborTotal(index),
+                          0
+                        )
+                    )}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center py-2 border-b">
+                  <span className="font-medium">Equipment Total</span>
+                  <span>
+                    {formatCurrency(
+                      form
+                        .watch("equipment")
+                        .reduce(
+                          (sum, equipment, index) =>
+                            sum + calculateEquipmentTotal(index),
+                          0
+                        )
+                    )}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center py-2 font-bold text-lg">
+                  <span>Grand Total</span>
+                  <span>{formatCurrency(calculateGrandTotal())}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-4">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => router.push("/unit-price-analyses")}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={isSubmitting}>
+                {isSubmitting ? "Creating..." : "Create UPA"}
+              </Button>
             </div>
           </form>
         </Form>
+
+        {/* New Dialog for creating and adding a new material */}
+        <Dialog
+          open={showAddMaterialDialog}
+          onOpenChange={setShowAddMaterialDialog}
+        >
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Create New Material</DialogTitle>
+              <DialogDescription>
+                Create a new material and add it to your library and this UPA
+              </DialogDescription>
+            </DialogHeader>
+
+            <NewMaterialForm onSubmit={handleCreateMaterial} />
+          </DialogContent>
+        </Dialog>
+
+        {/* New Dialog for creating and adding new labor */}
+        <Dialog open={showAddLaborDialog} onOpenChange={setShowAddLaborDialog}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Create New Labor</DialogTitle>
+              <DialogDescription>
+                Create a new labor role and add it to your library and this UPA
+              </DialogDescription>
+            </DialogHeader>
+
+            <NewLaborForm onSubmit={handleCreateLabor} />
+          </DialogContent>
+        </Dialog>
+
+        {/* New Dialog for creating and adding new equipment */}
+        <Dialog
+          open={showAddEquipmentDialog}
+          onOpenChange={setShowAddEquipmentDialog}
+        >
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Create New Equipment</DialogTitle>
+              <DialogDescription>
+                Create a new equipment and add it to your library and this UPA
+              </DialogDescription>
+            </DialogHeader>
+
+            <NewEquipmentForm onSubmit={handleCreateEquipment} />
+          </DialogContent>
+        </Dialog>
       </div>
     </DashboardLayout>
+  );
+}
+
+// New component for creating materials
+function NewMaterialForm({
+  onSubmit,
+}: {
+  onSubmit: (values: CreateMaterialInput) => Promise<void>;
+}) {
+  const materialFormSchema = z.object({
+    name: z.string().min(1, "Name is required"),
+    code: z.string().optional(),
+    description: z.string().optional(),
+    unit: z.string().min(1, "Unit is required"),
+    unitPrice: z.number().min(0, "Price must be a positive number"),
+    isPublic: z.boolean().default(false),
+  });
+
+  type MaterialFormValues = z.infer<typeof materialFormSchema>;
+
+  const form = useForm<MaterialFormValues>({
+    resolver: zodResolver(materialFormSchema),
+    defaultValues: {
+      name: "",
+      code: "",
+      description: "",
+      unit: "",
+      unitPrice: 0,
+      isPublic: false,
+    },
+  });
+
+  const handleSubmit = (values: MaterialFormValues) => {
+    onSubmit(values as CreateMaterialInput);
+  };
+
+  return (
+    <Form {...form}>
+      <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
+        <FormField
+          control={form.control}
+          name="name"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Name*</FormLabel>
+              <FormControl>
+                <Input placeholder="Material name" {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name="code"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Code</FormLabel>
+              <FormControl>
+                <Input placeholder="Material code" {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name="description"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Description</FormLabel>
+              <FormControl>
+                <Textarea
+                  placeholder="Material description"
+                  className="resize-none"
+                  {...field}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <div className="grid grid-cols-2 gap-4">
+          <FormField
+            control={form.control}
+            name="unit"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Unit*</FormLabel>
+                <FormControl>
+                  <Input placeholder="e.g., m², kg, each" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name="unitPrice"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Unit Price*</FormLabel>
+                <FormControl>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder="0.00"
+                    {...field}
+                    onChange={(e) => {
+                      const value = e.target.value
+                        ? parseFloat(e.target.value)
+                        : 0;
+                      field.onChange(value);
+                    }}
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        </div>
+
+        <FormField
+          control={form.control}
+          name="isPublic"
+          render={({ field }) => (
+            <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4">
+              <FormControl>
+                <Checkbox
+                  checked={field.value}
+                  onCheckedChange={field.onChange}
+                />
+              </FormControl>
+              <div className="space-y-1 leading-none">
+                <FormLabel>Make Public</FormLabel>
+                <FormDescription>
+                  Allow other organizations to use this material
+                </FormDescription>
+              </div>
+            </FormItem>
+          )}
+        />
+
+        <div className="flex justify-end gap-2 pt-4">
+          <Button type="submit">Create & Add</Button>
+        </div>
+      </form>
+    </Form>
+  );
+}
+
+// New component for creating labor
+function NewLaborForm({
+  onSubmit,
+}: {
+  onSubmit: (values: CreateLaborInput) => Promise<void>;
+}) {
+  const laborFormSchema = z.object({
+    role: z.string().min(1, "Role is required"),
+    code: z.string().optional(),
+    description: z.string().optional(),
+    unit: z.string().min(1, "Unit is required"),
+    unitPrice: z.number().min(0, "Price must be a positive number"),
+    isPublic: z.boolean().default(false),
+  });
+
+  type LaborFormValues = z.infer<typeof laborFormSchema>;
+
+  const form = useForm<LaborFormValues>({
+    resolver: zodResolver(laborFormSchema),
+    defaultValues: {
+      role: "",
+      code: "",
+      description: "",
+      unit: "",
+      unitPrice: 0,
+      isPublic: false,
+    },
+  });
+
+  const handleSubmit = (values: LaborFormValues) => {
+    onSubmit(values as CreateLaborInput);
+  };
+
+  return (
+    <Form {...form}>
+      <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
+        <FormField
+          control={form.control}
+          name="role"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Role*</FormLabel>
+              <FormControl>
+                <Input placeholder="Labor role" {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name="code"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Code</FormLabel>
+              <FormControl>
+                <Input placeholder="Labor code" {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name="description"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Description</FormLabel>
+              <FormControl>
+                <Textarea
+                  placeholder="Labor description"
+                  className="resize-none"
+                  {...field}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <div className="grid grid-cols-2 gap-4">
+          <FormField
+            control={form.control}
+            name="unit"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Unit*</FormLabel>
+                <FormControl>
+                  <Input placeholder="e.g., hour, day" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name="unitPrice"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Unit Price*</FormLabel>
+                <FormControl>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder="0.00"
+                    {...field}
+                    onChange={(e) => {
+                      const value = e.target.value
+                        ? parseFloat(e.target.value)
+                        : 0;
+                      field.onChange(value);
+                    }}
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        </div>
+
+        <FormField
+          control={form.control}
+          name="isPublic"
+          render={({ field }) => (
+            <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4">
+              <FormControl>
+                <Checkbox
+                  checked={field.value}
+                  onCheckedChange={field.onChange}
+                />
+              </FormControl>
+              <div className="space-y-1 leading-none">
+                <FormLabel>Make Public</FormLabel>
+                <FormDescription>
+                  Allow other organizations to use this labor role
+                </FormDescription>
+              </div>
+            </FormItem>
+          )}
+        />
+
+        <div className="flex justify-end gap-2 pt-4">
+          <Button type="submit">Create & Add</Button>
+        </div>
+      </form>
+    </Form>
+  );
+}
+
+// New component for creating equipment
+function NewEquipmentForm({
+  onSubmit,
+}: {
+  onSubmit: (values: CreateEquipmentInput) => Promise<void>;
+}) {
+  const equipmentFormSchema = z.object({
+    name: z.string().min(1, "Name is required"),
+    code: z.string().optional(),
+    description: z.string().optional(),
+    unit: z.string().min(1, "Unit is required"),
+    unitPrice: z.number().min(0, "Price must be a positive number"),
+    isPublic: z.boolean().default(false),
+  });
+
+  type EquipmentFormValues = z.infer<typeof equipmentFormSchema>;
+
+  const form = useForm<EquipmentFormValues>({
+    resolver: zodResolver(equipmentFormSchema),
+    defaultValues: {
+      name: "",
+      code: "",
+      description: "",
+      unit: "",
+      unitPrice: 0,
+      isPublic: false,
+    },
+  });
+
+  const handleSubmit = (values: EquipmentFormValues) => {
+    onSubmit(values as CreateEquipmentInput);
+  };
+
+  return (
+    <Form {...form}>
+      <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
+        <FormField
+          control={form.control}
+          name="name"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Name*</FormLabel>
+              <FormControl>
+                <Input placeholder="Equipment name" {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name="code"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Code</FormLabel>
+              <FormControl>
+                <Input placeholder="Equipment code" {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name="description"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Description</FormLabel>
+              <FormControl>
+                <Textarea
+                  placeholder="Equipment description"
+                  className="resize-none"
+                  {...field}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <div className="grid grid-cols-2 gap-4">
+          <FormField
+            control={form.control}
+            name="unit"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Unit*</FormLabel>
+                <FormControl>
+                  <Input placeholder="e.g., hour, day" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name="unitPrice"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Unit Price*</FormLabel>
+                <FormControl>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder="0.00"
+                    {...field}
+                    onChange={(e) => {
+                      const value = e.target.value
+                        ? parseFloat(e.target.value)
+                        : 0;
+                      field.onChange(value);
+                    }}
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        </div>
+
+        <FormField
+          control={form.control}
+          name="isPublic"
+          render={({ field }) => (
+            <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4">
+              <FormControl>
+                <Checkbox
+                  checked={field.value}
+                  onCheckedChange={field.onChange}
+                />
+              </FormControl>
+              <div className="space-y-1 leading-none">
+                <FormLabel>Make Public</FormLabel>
+                <FormDescription>
+                  Allow other organizations to use this equipment
+                </FormDescription>
+              </div>
+            </FormItem>
+          )}
+        />
+
+        <div className="flex justify-end gap-2 pt-4">
+          <Button type="submit">Create & Add</Button>
+        </div>
+      </form>
+    </Form>
   );
 }

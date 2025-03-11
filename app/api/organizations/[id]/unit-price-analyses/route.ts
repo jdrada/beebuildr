@@ -14,7 +14,8 @@ export async function GET(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const organizationId = params.id;
+    // Get the organization ID from the URL params
+    const { id: organizationId } = params;
 
     // Check if the user is a member of this organization
     const membership = await prisma.organizationMember.findFirst({

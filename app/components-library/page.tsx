@@ -1,22 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { DashboardLayout } from "@/components/layouts/dashboard-layout";
 import { useActiveOrganization } from "@/hooks/useActiveOrganization";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { EmptyState } from "@/components/empty-state";
-import { Spinner } from "@/components/spinner";
-import { MemberRole, OrganizationType } from "@prisma/client";
 import {
-  useMaterials,
-  useLabor,
-  useEquipment,
-  Material,
-  Labor,
-  Equipment,
-} from "@/hooks/useComponentsLibrary";
-import { formatCurrency } from "@/lib/utils";
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   Table,
   TableBody,
@@ -25,12 +18,31 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { PlusCircle, Search } from "lucide-react";
+import { Plus, PackageOpen, Keyboard } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+import { Spinner } from "@/components/spinner";
+import { ComponentEditModal } from "@/components/ui/component-edit-modal";
+import {
+  useMaterials,
+  useLabor,
+  useEquipment,
+  Material,
+  Labor,
+  Equipment,
+} from "@/hooks/useComponentsLibrary";
 
-// Extended interfaces to include usage information
+// Base interfaces
 interface MaterialWithUsage extends Material {
   usageCount?: number;
   inUse?: boolean;
@@ -46,66 +58,306 @@ interface EquipmentWithUsage extends Equipment {
   inUse?: boolean;
 }
 
+// Define a union type for all component types
+type ComponentItem = (
+  | MaterialWithUsage
+  | LaborWithUsage
+  | EquipmentWithUsage
+) & {
+  type?: "material" | "labor" | "equipment";
+};
+
+// Add a helper function to format the price
+const formatPrice = (price: number | string | null | undefined): string => {
+  // Ensure price is a number
+  const numericPrice =
+    typeof price === "number" ? price : parseFloat(price || "0");
+  return isNaN(numericPrice) ? "$0.00" : `$${numericPrice.toFixed(2)}`;
+};
+
 export default function ComponentsLibraryPage() {
-  const [activeTab, setActiveTab] = useState("materials");
+  const { activeOrganization } = useActiveOrganization();
   const [searchQuery, setSearchQuery] = useState("");
-  const { activeOrganization, activeRole } = useActiveOrganization();
-
-  const { data: materialsData, isLoading: materialsLoading } = useMaterials(
-    activeOrganization?.id
+  const [componentType, setComponentType] = useState<
+    "all" | "materials" | "labor" | "equipment"
+  >("all");
+  const [showInUseOnly, setShowInUseOnly] = useState(false);
+  const [sortBy, setSortBy] = useState<"name" | "code" | "price" | "usage">(
+    "name"
   );
-
-  const { data: laborData, isLoading: laborLoading } = useLabor(
-    activeOrganization?.id
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [editComponent, setEditComponent] = useState<ComponentItem | null>(
+    null
   );
+  const [editComponentType, setEditComponentType] = useState<
+    "material" | "labor" | "equipment"
+  >("material");
+  const [isShortcutsDialogOpen, setIsShortcutsDialogOpen] = useState(false);
 
-  const { data: equipmentData, isLoading: equipmentLoading } = useEquipment(
-    activeOrganization?.id
-  );
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Prevent shortcuts when typing in input fields
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement
+      ) {
+        return;
+      }
 
-  const canCreateComponents =
-    activeRole === MemberRole.ADMIN || activeRole === MemberRole.MEMBER;
+      // Shortcuts for filtering
+      if (e.key === "/" && !editModalOpen) {
+        e.preventDefault();
+        document.getElementById("search")?.focus();
+      }
 
-  // Filter materials based on search query
-  const filteredMaterials = materialsData?.materials?.filter(
-    (material: MaterialWithUsage) =>
-      material.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (material.code?.toLowerCase() || "").includes(searchQuery.toLowerCase())
-  );
+      // Show keyboard shortcuts
+      if (e.key === "?" && !editModalOpen) {
+        e.preventDefault();
+        setIsShortcutsDialogOpen(true);
+      }
 
-  // Filter labor based on search query
-  const filteredLabor = laborData?.labor?.filter(
-    (labor: LaborWithUsage) =>
-      labor.role.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (labor.code?.toLowerCase() || "").includes(searchQuery.toLowerCase())
-  );
+      // Shortcuts for component types
+      if (!editModalOpen && e.altKey) {
+        switch (e.key) {
+          case "a":
+            e.preventDefault();
+            setComponentType("all");
+            break;
+          case "m":
+            e.preventDefault();
+            setComponentType("materials");
+            break;
+          case "l":
+            e.preventDefault();
+            setComponentType("labor");
+            break;
+          case "e":
+            e.preventDefault();
+            setComponentType("equipment");
+            break;
+        }
+      }
 
-  // Filter equipment based on search query
-  const filteredEquipment = equipmentData?.equipment?.filter(
-    (equipment: EquipmentWithUsage) =>
-      equipment.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (equipment.code?.toLowerCase() || "").includes(searchQuery.toLowerCase())
-  );
+      // Escape to close modal
+      if (e.key === "Escape" && editModalOpen) {
+        setEditModalOpen(false);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [editModalOpen, setComponentType]);
+
+  // Use React Query hooks
+  const {
+    data: materialsData,
+    isLoading: materialsLoading,
+    error: materialsError,
+  } = useMaterials(activeOrganization?.id);
+
+  const {
+    data: laborData,
+    isLoading: laborLoading,
+    error: laborError,
+  } = useLabor(activeOrganization?.id);
+
+  const {
+    data: equipmentData,
+    isLoading: equipmentLoading,
+    error: equipmentError,
+  } = useEquipment(activeOrganization?.id);
+
+  // Determine overall loading and error states
+  const isLoading = materialsLoading || laborLoading || equipmentLoading;
+  const error = materialsError || laborError || equipmentError;
+
+  // Extract data from query results
+  const materials = materialsData?.materials || [];
+  const labor = laborData?.labor || [];
+  const equipment = equipmentData?.equipment || [];
+
+  // Filter and sort functions
+  const filterBySearch = (item: ComponentItem) => {
+    if (!searchQuery) return true;
+    const query = searchQuery.toLowerCase();
+
+    // Check common fields
+    if (item.code?.toLowerCase().includes(query)) return true;
+    if (item.description?.toLowerCase().includes(query)) return true;
+    if (item.unit?.toLowerCase().includes(query)) return true;
+
+    // Check type-specific fields
+    if ("name" in item && item.name?.toLowerCase().includes(query)) return true;
+    if ("role" in item && item.role?.toLowerCase().includes(query)) return true;
+
+    return false;
+  };
+
+  const filterByUsage = (item: ComponentItem) => {
+    if (!showInUseOnly) return true;
+    return item.inUse === true;
+  };
+
+  const filterByType = (type: string) => {
+    return componentType === "all" || componentType === type;
+  };
+
+  const getSortValue = (item: ComponentItem) => {
+    switch (sortBy) {
+      case "name":
+        return "name" in item ? item.name : "role" in item ? item.role : "";
+      case "code":
+        return item.code || "";
+      case "price":
+        return item.unitPrice || 0;
+      case "usage":
+        return item.usageCount || 0;
+      default:
+        return "";
+    }
+  };
+
+  const sortItems = (a: ComponentItem, b: ComponentItem) => {
+    const aValue = getSortValue(a);
+    const bValue = getSortValue(b);
+
+    if (typeof aValue === "number" && typeof bValue === "number") {
+      return sortOrder === "asc" ? aValue - bValue : bValue - aValue;
+    }
+
+    const aString = String(aValue).toLowerCase();
+    const bString = String(bValue).toLowerCase();
+
+    return sortOrder === "asc"
+      ? aString.localeCompare(bString)
+      : bString.localeCompare(aString);
+  };
+
+  // Apply filters and sorting
+  const filteredMaterials = filterByType("materials")
+    ? materials
+        .filter(
+          (item: MaterialWithUsage) =>
+            filterBySearch(item) && filterByUsage(item)
+        )
+        .sort(sortItems)
+    : [];
+
+  const filteredLabor = filterByType("labor")
+    ? labor
+        .filter(
+          (item: LaborWithUsage) => filterBySearch(item) && filterByUsage(item)
+        )
+        .sort(sortItems)
+    : [];
+
+  const filteredEquipment = filterByType("equipment")
+    ? equipment
+        .filter(
+          (item: EquipmentWithUsage) =>
+            filterBySearch(item) && filterByUsage(item)
+        )
+        .sort(sortItems)
+    : [];
+
+  // Combined list for "all" view
+  const allComponents = [
+    ...filteredMaterials.map((item: MaterialWithUsage) => ({
+      ...item,
+      type: "material" as const,
+    })),
+    ...filteredLabor.map((item: LaborWithUsage) => ({
+      ...item,
+      type: "labor" as const,
+    })),
+    ...filteredEquipment.map((item: EquipmentWithUsage) => ({
+      ...item,
+      type: "equipment" as const,
+    })),
+  ].sort(sortItems);
+
+  const handleSortChange = (field: "name" | "code" | "price" | "usage") => {
+    if (sortBy === field) {
+      setSortOrder(sortOrder === "asc" ? "desc" : "asc");
+    } else {
+      setSortBy(field);
+      setSortOrder("asc");
+    }
+  };
+
+  const renderSortIcon = (field: "name" | "code" | "price" | "usage") => {
+    if (sortBy !== field) return null;
+    return sortOrder === "asc" ? "↑" : "↓";
+  };
+
+  const getComponentTypeLabel = (type: string) => {
+    switch (type) {
+      case "material":
+        return "Material";
+      case "labor":
+        return "Labor";
+      case "equipment":
+        return "Equipment";
+      default:
+        return "";
+    }
+  };
+
+  const getComponentName = (item: ComponentItem) => {
+    if ("name" in item) return item.name;
+    if ("role" in item) return item.role;
+    return "";
+  };
+
+  const handleEditComponent = (item: ComponentItem) => {
+    setEditComponent(item);
+    // Set the component type based on the item type or infer it
+    if (item.type) {
+      setEditComponentType(item.type);
+    } else if ("name" in item && !("role" in item)) {
+      setEditComponentType("material");
+    } else if ("role" in item) {
+      setEditComponentType("labor");
+    } else {
+      setEditComponentType("equipment");
+    }
+    setEditModalOpen(true);
+  };
 
   if (!activeOrganization) {
     return (
-      <div className="flex h-[calc(100vh-4rem)] items-center justify-center">
-        <EmptyState
-          title="No Organization Selected"
-          description="Please select an organization to view components library."
-        />
-      </div>
+      <DashboardLayout>
+        <div className="container mx-auto py-10">
+          <h1 className="text-2xl font-bold">Components Library</h1>
+          <p className="text-muted-foreground">
+            Please select an organization to view its components library.
+          </p>
+        </div>
+      </DashboardLayout>
     );
   }
 
-  if (activeOrganization.type !== OrganizationType.CONTRACTOR) {
+  if (error) {
     return (
       <DashboardLayout>
         <div className="container mx-auto py-10">
-          <EmptyState
-            title="Components Library"
-            description="This feature is only available for contractor organizations."
-          />
+          <div
+            className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded relative"
+            role="alert"
+          >
+            <strong className="font-bold">Error: </strong>
+            <span className="block sm:inline">
+              {error instanceof Error
+                ? error.message
+                : "An unknown error occurred"}
+            </span>
+            <p className="mt-2">
+              Please try refreshing the page or contact support if the problem
+              persists.
+            </p>
+          </div>
         </div>
       </DashboardLayout>
     );
@@ -114,268 +366,371 @@ export default function ComponentsLibraryPage() {
   return (
     <DashboardLayout>
       <div className="container mx-auto py-10">
-        <div className="mb-8 flex items-center justify-between">
+        <div className="flex justify-between items-center mb-6">
           <div>
-            <h2 className="text-3xl font-bold tracking-tight">
-              Components Library
-            </h2>
+            <h1 className="text-2xl font-bold">Components Library</h1>
             <p className="text-muted-foreground">
-              Manage your reusable materials, labor, and equipment
+              Manage your materials, labor, and equipment components
             </p>
           </div>
-          {canCreateComponents && activeTab === "materials" && (
+          <div className="flex items-center space-x-2">
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => setIsShortcutsDialogOpen(true)}
+              title="Show keyboard shortcuts"
+              className="mr-2"
+            >
+              <Keyboard className="h-4 w-4" />
+            </Button>
             <Button asChild>
-              <Link href="/components-library/materials/new">
-                <PlusCircle className="mr-2 h-4 w-4" />
-                New Material
+              <Link
+                href="/components-library/materials/new"
+                title="Alt+M to filter materials"
+              >
+                <Plus className="mr-2 h-4 w-4" /> Add Material
               </Link>
             </Button>
-          )}
-          {canCreateComponents && activeTab === "labor" && (
             <Button asChild>
-              <Link href="/components-library/labor/new">
-                <PlusCircle className="mr-2 h-4 w-4" />
-                New Labor
+              <Link
+                href="/components-library/labor/new"
+                title="Alt+L to filter labor"
+              >
+                <Plus className="mr-2 h-4 w-4" /> Add Labor
               </Link>
             </Button>
-          )}
-          {canCreateComponents && activeTab === "equipment" && (
             <Button asChild>
-              <Link href="/components-library/equipment/new">
-                <PlusCircle className="mr-2 h-4 w-4" />
-                New Equipment
+              <Link
+                href="/components-library/equipment/new"
+                title="Alt+E to filter equipment"
+              >
+                <Plus className="mr-2 h-4 w-4" /> Add Equipment
               </Link>
             </Button>
-          )}
+          </div>
         </div>
 
-        <div className="relative mb-6 max-w-sm">
-          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search components..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-8"
-            type="search"
-          />
-        </div>
-
-        <Tabs
-          defaultValue="materials"
-          value={activeTab}
-          onValueChange={setActiveTab}
-          className="w-full"
-        >
-          <TabsList className="mb-4">
-            <TabsTrigger value="materials">Materials</TabsTrigger>
-            <TabsTrigger value="labor">Labor</TabsTrigger>
-            <TabsTrigger value="equipment">Equipment</TabsTrigger>
-          </TabsList>
-
-          {/* Materials Tab */}
-          <TabsContent value="materials">
-            {materialsLoading ? (
-              <div className="flex h-[400px] items-center justify-center">
-                <Spinner />
-              </div>
-            ) : filteredMaterials?.length === 0 ? (
-              <EmptyState
-                title="No Materials"
-                description="Create your first material to get started."
-                action={
-                  canCreateComponents && (
-                    <Button asChild>
-                      <Link href="/components-library/materials/new">
-                        <PlusCircle className="mr-2 h-4 w-4" />
-                        New Material
-                      </Link>
-                    </Button>
+        <div className="bg-card rounded-lg border shadow-sm p-6 mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+            <div>
+              <Label htmlFor="search">Search</Label>
+              <Input
+                id="search"
+                placeholder="Search by name, code, etc."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <Label htmlFor="componentType">Component Type</Label>
+              <Select
+                value={componentType}
+                onValueChange={(value: string) =>
+                  setComponentType(
+                    value as "all" | "materials" | "labor" | "equipment"
                   )
                 }
-              />
-            ) : (
-              <div className="rounded-md border">
-                <Table>
-                  <TableHeader>
+              >
+                <SelectTrigger id="componentType" className="mt-1">
+                  <SelectValue placeholder="Select component type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Components</SelectItem>
+                  <SelectItem value="materials">Materials</SelectItem>
+                  <SelectItem value="labor">Labor</SelectItem>
+                  <SelectItem value="equipment">Equipment</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex items-end">
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="showInUseOnly"
+                  checked={showInUseOnly}
+                  onCheckedChange={(checked) => setShowInUseOnly(!!checked)}
+                />
+                <Label htmlFor="showInUseOnly">
+                  Show in-use components only
+                </Label>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {isLoading ? (
+          <div className="flex justify-center items-center h-64">
+            <Spinner className="h-8 w-8" />
+          </div>
+        ) : (
+          <div className="bg-card rounded-lg border shadow-sm">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-[100px]">Type</TableHead>
+                  <TableHead
+                    className="cursor-pointer"
+                    onClick={() => handleSortChange("code")}
+                  >
+                    Code {renderSortIcon("code")}
+                  </TableHead>
+                  <TableHead
+                    className="cursor-pointer"
+                    onClick={() => handleSortChange("name")}
+                  >
+                    Name/Role {renderSortIcon("name")}
+                  </TableHead>
+                  <TableHead>Unit</TableHead>
+                  <TableHead
+                    className="cursor-pointer text-right"
+                    onClick={() => handleSortChange("price")}
+                  >
+                    Unit Price {renderSortIcon("price")}
+                  </TableHead>
+                  <TableHead
+                    className="cursor-pointer text-center"
+                    onClick={() => handleSortChange("usage")}
+                  >
+                    Usage {renderSortIcon("usage")}
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {componentType === "all" ? (
+                  allComponents.length > 0 ? (
+                    allComponents.map((item) => (
+                      <TableRow
+                        key={`${item.type}-${item.id}`}
+                        className="cursor-pointer hover:bg-muted/50"
+                        onClick={() => handleEditComponent(item)}
+                      >
+                        <TableCell>
+                          <Badge variant="outline">
+                            {getComponentTypeLabel(item.type)}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>{item.code || "-"}</TableCell>
+                        <TableCell>{getComponentName(item)}</TableCell>
+                        <TableCell>{item.unit}</TableCell>
+                        <TableCell className="text-right">
+                          {formatPrice(item.unitPrice)}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          {item.inUse ? (
+                            <Badge variant="secondary">
+                              In use ({item.usageCount || 0})
+                            </Badge>
+                          ) : (
+                            <span className="text-muted-foreground">
+                              Not in use
+                            </span>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  ) : (
                     <TableRow>
-                      <TableHead>Code</TableHead>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Unit</TableHead>
-                      <TableHead>Price</TableHead>
-                      <TableHead>Public</TableHead>
-                      <TableHead>Usage</TableHead>
+                      <TableCell colSpan={6} className="text-center py-10">
+                        <div className="flex flex-col items-center justify-center">
+                          <PackageOpen className="h-10 w-10 text-muted-foreground mb-2" />
+                          <p className="text-muted-foreground">
+                            No components found
+                          </p>
+                        </div>
+                      </TableCell>
                     </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredMaterials?.map((material: MaterialWithUsage) => (
+                  )
+                ) : componentType === "materials" ? (
+                  filteredMaterials.length > 0 ? (
+                    filteredMaterials.map((material: MaterialWithUsage) => (
                       <TableRow
                         key={material.id}
                         className="cursor-pointer hover:bg-muted/50"
-                        onClick={() =>
-                          (window.location.href = `/components-library/materials/${material.id}/edit`)
-                        }
+                        onClick={() => handleEditComponent(material)}
                       >
+                        <TableCell>
+                          <Badge variant="outline">Material</Badge>
+                        </TableCell>
                         <TableCell>{material.code || "-"}</TableCell>
                         <TableCell>{material.name}</TableCell>
                         <TableCell>{material.unit}</TableCell>
-                        <TableCell>
-                          {formatCurrency(material.unitPrice)}
+                        <TableCell className="text-right">
+                          {formatPrice(material.unitPrice)}
                         </TableCell>
-                        <TableCell>
-                          {material.isPublic ? "Yes" : "No"}
-                        </TableCell>
-                        <TableCell>
-                          {material.usageCount && material.usageCount > 0 ? (
-                            <Badge variant="outline">
-                              Used in {material.usageCount} UPAs
+                        <TableCell className="text-center">
+                          {material.inUse ? (
+                            <Badge variant="secondary">
+                              In use ({material.usageCount || 0})
                             </Badge>
                           ) : (
-                            "Not used"
+                            <span className="text-muted-foreground">
+                              Not in use
+                            </span>
                           )}
                         </TableCell>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            )}
-          </TabsContent>
-
-          {/* Labor Tab */}
-          <TabsContent value="labor">
-            {laborLoading ? (
-              <div className="flex h-[400px] items-center justify-center">
-                <Spinner />
-              </div>
-            ) : filteredLabor?.length === 0 ? (
-              <EmptyState
-                title="No Labor"
-                description="Create your first labor to get started."
-                action={
-                  canCreateComponents && (
-                    <Button asChild>
-                      <Link href="/components-library/labor/new">
-                        <PlusCircle className="mr-2 h-4 w-4" />
-                        New Labor
-                      </Link>
-                    </Button>
-                  )
-                }
-              />
-            ) : (
-              <div className="rounded-md border">
-                <Table>
-                  <TableHeader>
+                    ))
+                  ) : (
                     <TableRow>
-                      <TableHead>Code</TableHead>
-                      <TableHead>Role</TableHead>
-                      <TableHead>Unit</TableHead>
-                      <TableHead>Price</TableHead>
-                      <TableHead>Public</TableHead>
-                      <TableHead>Usage</TableHead>
+                      <TableCell colSpan={6} className="text-center py-10">
+                        <div className="flex flex-col items-center justify-center">
+                          <PackageOpen className="h-10 w-10 text-muted-foreground mb-2" />
+                          <p className="text-muted-foreground">
+                            No materials found
+                          </p>
+                        </div>
+                      </TableCell>
                     </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredLabor?.map((labor: LaborWithUsage) => (
+                  )
+                ) : componentType === "labor" ? (
+                  filteredLabor.length > 0 ? (
+                    filteredLabor.map((labor: LaborWithUsage) => (
                       <TableRow
                         key={labor.id}
                         className="cursor-pointer hover:bg-muted/50"
-                        onClick={() =>
-                          (window.location.href = `/components-library/labor/${labor.id}/edit`)
-                        }
+                        onClick={() => handleEditComponent(labor)}
                       >
+                        <TableCell>
+                          <Badge variant="outline">Labor</Badge>
+                        </TableCell>
                         <TableCell>{labor.code || "-"}</TableCell>
                         <TableCell>{labor.role}</TableCell>
                         <TableCell>{labor.unit}</TableCell>
-                        <TableCell>{formatCurrency(labor.unitPrice)}</TableCell>
-                        <TableCell>{labor.isPublic ? "Yes" : "No"}</TableCell>
-                        <TableCell>
-                          {labor.usageCount && labor.usageCount > 0 ? (
-                            <Badge variant="outline">
-                              Used in {labor.usageCount} UPAs
+                        <TableCell className="text-right">
+                          {formatPrice(labor.unitPrice)}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          {labor.inUse ? (
+                            <Badge variant="secondary">
+                              In use ({labor.usageCount || 0})
                             </Badge>
                           ) : (
-                            "Not used"
+                            <span className="text-muted-foreground">
+                              Not in use
+                            </span>
                           )}
                         </TableCell>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            )}
-          </TabsContent>
-
-          {/* Equipment Tab */}
-          <TabsContent value="equipment">
-            {equipmentLoading ? (
-              <div className="flex h-[400px] items-center justify-center">
-                <Spinner />
-              </div>
-            ) : filteredEquipment?.length === 0 ? (
-              <EmptyState
-                title="No Equipment"
-                description="Create your first equipment to get started."
-                action={
-                  canCreateComponents && (
-                    <Button asChild>
-                      <Link href="/components-library/equipment/new">
-                        <PlusCircle className="mr-2 h-4 w-4" />
-                        New Equipment
-                      </Link>
-                    </Button>
-                  )
-                }
-              />
-            ) : (
-              <div className="rounded-md border">
-                <Table>
-                  <TableHeader>
+                    ))
+                  ) : (
                     <TableRow>
-                      <TableHead>Code</TableHead>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Unit</TableHead>
-                      <TableHead>Price</TableHead>
-                      <TableHead>Public</TableHead>
-                      <TableHead>Usage</TableHead>
+                      <TableCell colSpan={6} className="text-center py-10">
+                        <div className="flex flex-col items-center justify-center">
+                          <PackageOpen className="h-10 w-10 text-muted-foreground mb-2" />
+                          <p className="text-muted-foreground">
+                            No labor found
+                          </p>
+                        </div>
+                      </TableCell>
                     </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredEquipment?.map((equipment: EquipmentWithUsage) => (
-                      <TableRow
-                        key={equipment.id}
-                        className="cursor-pointer hover:bg-muted/50"
-                        onClick={() =>
-                          (window.location.href = `/components-library/equipment/${equipment.id}/edit`)
-                        }
-                      >
-                        <TableCell>{equipment.code || "-"}</TableCell>
-                        <TableCell>{equipment.name}</TableCell>
-                        <TableCell>{equipment.unit}</TableCell>
-                        <TableCell>
-                          {formatCurrency(equipment.unitPrice)}
-                        </TableCell>
-                        <TableCell>
-                          {equipment.isPublic ? "Yes" : "No"}
-                        </TableCell>
-                        <TableCell>
-                          {equipment.usageCount && equipment.usageCount > 0 ? (
-                            <Badge variant="outline">
-                              Used in {equipment.usageCount} UPAs
-                            </Badge>
-                          ) : (
-                            "Not used"
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            )}
-          </TabsContent>
-        </Tabs>
+                  )
+                ) : filteredEquipment.length > 0 ? (
+                  filteredEquipment.map((equipment: EquipmentWithUsage) => (
+                    <TableRow
+                      key={equipment.id}
+                      className="cursor-pointer hover:bg-muted/50"
+                      onClick={() => handleEditComponent(equipment)}
+                    >
+                      <TableCell>
+                        <Badge variant="outline">Equipment</Badge>
+                      </TableCell>
+                      <TableCell>{equipment.code || "-"}</TableCell>
+                      <TableCell>{equipment.name}</TableCell>
+                      <TableCell>{equipment.unit}</TableCell>
+                      <TableCell className="text-right">
+                        {formatPrice(equipment.unitPrice)}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {equipment.inUse ? (
+                          <Badge variant="secondary">
+                            In use ({equipment.usageCount || 0})
+                          </Badge>
+                        ) : (
+                          <span className="text-muted-foreground">
+                            Not in use
+                          </span>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))
+                ) : (
+                  <TableRow>
+                    <TableCell colSpan={6} className="text-center py-10">
+                      <div className="flex flex-col items-center justify-center">
+                        <PackageOpen className="h-10 w-10 text-muted-foreground mb-2" />
+                        <p className="text-muted-foreground">
+                          No equipment found
+                        </p>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        )}
       </div>
+      {editModalOpen && editComponent && (
+        <ComponentEditModal
+          isOpen={editModalOpen}
+          onClose={() => setEditModalOpen(false)}
+          componentType={editComponentType}
+          component={editComponent}
+        />
+      )}
+      {/* Keyboard Shortcuts Dialog */}
+      <Dialog
+        open={isShortcutsDialogOpen}
+        onOpenChange={setIsShortcutsDialogOpen}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Keyboard Shortcuts</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="grid grid-cols-2 gap-2">
+              <div className="font-semibold">Search</div>
+              <div>
+                <kbd className="px-2 py-1 bg-muted rounded">/</kbd>
+              </div>
+
+              <div className="font-semibold">Show this help</div>
+              <div>
+                <kbd className="px-2 py-1 bg-muted rounded">?</kbd>
+              </div>
+
+              <div className="font-semibold">Show all components</div>
+              <div>
+                <kbd className="px-2 py-1 bg-muted rounded">Alt</kbd> +{" "}
+                <kbd className="px-2 py-1 bg-muted rounded">A</kbd>
+              </div>
+
+              <div className="font-semibold">Show materials</div>
+              <div>
+                <kbd className="px-2 py-1 bg-muted rounded">Alt</kbd> +{" "}
+                <kbd className="px-2 py-1 bg-muted rounded">M</kbd>
+              </div>
+
+              <div className="font-semibold">Show labor</div>
+              <div>
+                <kbd className="px-2 py-1 bg-muted rounded">Alt</kbd> +{" "}
+                <kbd className="px-2 py-1 bg-muted rounded">L</kbd>
+              </div>
+
+              <div className="font-semibold">Show equipment</div>
+              <div>
+                <kbd className="px-2 py-1 bg-muted rounded">Alt</kbd> +{" "}
+                <kbd className="px-2 py-1 bg-muted rounded">E</kbd>
+              </div>
+
+              <div className="font-semibold">Close dialogs</div>
+              <div>
+                <kbd className="px-2 py-1 bg-muted rounded">Esc</kbd>
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   );
 }

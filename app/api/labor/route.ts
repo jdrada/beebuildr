@@ -29,18 +29,27 @@ export async function GET(req: NextRequest) {
     const organizationId = searchParams.get("organizationId");
     const isPublic = searchParams.get("isPublic") === "true";
 
-    if (!organizationId) {
-      return NextResponse.json(
-        { error: "Organization ID is required" },
-        { status: 400 }
-      );
+    let finalOrganizationId = organizationId;
+
+    if (!finalOrganizationId) {
+      // Try to get the active organization from the session
+      const activeOrganizationId = session.activeOrganizationId;
+
+      if (!activeOrganizationId) {
+        return NextResponse.json(
+          { error: "Organization ID is required" },
+          { status: 400 }
+        );
+      }
+
+      finalOrganizationId = activeOrganizationId;
     }
 
     // Check if the user is a member of this organization
     const membership = await prisma.organizationMember.findFirst({
       where: {
         userId: session.user.id,
-        organizationId,
+        organizationId: finalOrganizationId,
       },
     });
 
@@ -53,7 +62,7 @@ export async function GET(req: NextRequest) {
 
     // Check if the organization is a contractor
     const organization = await prisma.organization.findUnique({
-      where: { id: organizationId },
+      where: { id: finalOrganizationId },
     });
 
     if (organization?.type !== OrganizationType.CONTRACTOR) {
@@ -64,7 +73,9 @@ export async function GET(req: NextRequest) {
     }
 
     // Build the where clause
-    const where: Prisma.LaborWhereInput = { organizationId };
+    const where: Prisma.LaborWhereInput = {
+      organizationId: finalOrganizationId,
+    };
 
     // If isPublic is specified, filter by it
     if (searchParams.has("isPublic")) {
