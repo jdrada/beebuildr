@@ -1,7 +1,6 @@
 "use client";
 
 import React from "react";
-import { UserMenu } from "@/components/user-menu";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import { AppSidebar } from "@/components/app-sidebar";
@@ -37,11 +36,11 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
       <SidebarProvider>
         <AppSidebar />
         <SidebarInset className="flex flex-col w-full">
-          <header className="border-b">
+          {/* <header className="border-b">
             <div className="flex h-16 items-center justify-end px-6">
               <UserMenu />
             </div>
-          </header>
+          </header> */}
           <main className="flex-1 p-6 overflow-auto">{children}</main>
         </SidebarInset>
       </SidebarProvider>
