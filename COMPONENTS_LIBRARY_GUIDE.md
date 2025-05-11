@@ -7,6 +7,7 @@ The Components Library is accessible through the main navigation bar at the top 
 3. Click on the 'Components Library' link to access the library
 
 From there, you can:
+
 - View existing materials, labor, and equipment
 - Add new components by clicking the 'New Material', 'New Labor', or 'New Equipment' buttons
 - Search for components using the search bar
