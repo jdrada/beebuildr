@@ -80,6 +80,9 @@ export function ProjectsTable({ projects }: { projects: Project[] }) {
       ),
       enableSorting: false,
       enableHiding: false,
+      size: 40,
+      minSize: 40,
+      maxSize: 40,
     },
     {
       accessorKey: "name",
@@ -112,6 +115,7 @@ export function ProjectsTable({ projects }: { projects: Project[] }) {
           </Link>
         </div>
       ),
+      minSize: 150,
     },
     {
       accessorKey: "status",
@@ -120,7 +124,7 @@ export function ProjectsTable({ projects }: { projects: Project[] }) {
           <Button
             variant="ghost"
             onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-            className="-ml-3 h-8 px-2 hover:bg-transparent hover:text-gray-900"
+            className="-ml-3 h-8 px-2 hover:bg-gray-50 hover:text-gray-900 cursor-pointer"
           >
             Status
             <ArrowUpDown className="ml-1 h-3.5 w-3.5" />
@@ -151,6 +155,8 @@ export function ProjectsTable({ projects }: { projects: Project[] }) {
       filterFn: (row, id, value) => {
         return value.includes(row.getValue(id));
       },
+      size: 110,
+      minSize: 90,
     },
     {
       accessorKey: "clientName",
@@ -160,6 +166,8 @@ export function ProjectsTable({ projects }: { projects: Project[] }) {
           {row.getValue("clientName") || "—"}
         </span>
       ),
+      size: 120,
+      minSize: 80,
     },
     {
       accessorKey: "projectType",
@@ -169,6 +177,8 @@ export function ProjectsTable({ projects }: { projects: Project[] }) {
           {row.getValue("projectType") || "—"}
         </span>
       ),
+      size: 120,
+      minSize: 80,
     },
     {
       accessorKey: "createdAt",
@@ -177,7 +187,7 @@ export function ProjectsTable({ projects }: { projects: Project[] }) {
           <Button
             variant="ghost"
             onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-            className="-ml-3 h-8 px-2 hover:bg-transparent hover:text-gray-900"
+            className="-ml-3 h-8 px-2 hover:bg-gray-50 hover:text-gray-900 cursor-pointer"
           >
             Created
             <ArrowUpDown className="ml-1 h-3.5 w-3.5" />
@@ -191,6 +201,8 @@ export function ProjectsTable({ projects }: { projects: Project[] }) {
         );
       },
       sortingFn: "datetime",
+      size: 110,
+      minSize: 90,
     },
     {
       id: "metrics",
@@ -210,6 +222,8 @@ export function ProjectsTable({ projects }: { projects: Project[] }) {
           </div>
         );
       },
+      size: 100,
+      minSize: 80,
     },
     {
       id: "actions",
@@ -239,6 +253,9 @@ export function ProjectsTable({ projects }: { projects: Project[] }) {
           />
         );
       },
+      size: 60,
+      minSize: 50,
+      maxSize: 60,
     },
   ];
 

@@ -10,6 +10,7 @@ const Table = React.forwardRef<
     <table
       ref={ref}
       className={cn("w-full caption-bottom text-sm", className)}
+      style={{ width: "100%", tableLayout: "auto" }}
       {...props}
     />
   </div>
@@ -77,11 +78,13 @@ const TableHead = React.forwardRef<
   <th
     ref={ref}
     className={cn(
-      "h-9 px-3 text-left align-middle font-medium text-muted-foreground text-xs [&:has([role=checkbox])]:pr-0",
+      "h-9 px-3 text-left align-middle font-medium text-muted-foreground text-xs [&:has([role=checkbox])]:pr-0 relative group/cell",
       className
     )}
     {...props}
-  />
+  >
+    {props.children}
+  </th>
 ));
 TableHead.displayName = "TableHead";
 
@@ -92,11 +95,13 @@ const TableCell = React.forwardRef<
   <td
     ref={ref}
     className={cn(
-      "py-2 px-3 align-middle [&:has([role=checkbox])]:pr-0",
+      "py-2 px-3 align-middle [&:has([role=checkbox])]:pr-0 relative group/cell",
       className
     )}
     {...props}
-  />
+  >
+    {props.children}
+  </td>
 ));
 TableCell.displayName = "TableCell";
 

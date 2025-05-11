@@ -257,7 +257,7 @@ export default function ProjectsPage() {
         ) : (
           <div className="flex-1">
             {viewMode === "table" ? (
-              <div className="bg-white rounded border h-full flex flex-col">
+              <div className="bg-white h-full flex flex-col">
                 <ProjectsTable projects={formattedProjects} />
               </div>
             ) : (
